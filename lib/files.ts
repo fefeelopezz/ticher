@@ -26,11 +26,12 @@ export const deleteFile = (id: string) => run("readwrite", (s) => s.delete(id))
 
 type Sendable = { id: string; name: string; type: string }
 
-// Formats the Claude API reads directly; Word/PowerPoint would need converting first.
+// Formats Gemini reads directly; Word/PowerPoint would need converting first.
 const isSendable = (m: Sendable) => /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/)/.test(m.type) || /\.(md|txt)$/i.test(m.name)
 
-// Stays under the API's 32 MB request limit (base64 is ~33% larger than the file).
-const BUDGET_CHARS = 28_000_000
+// Stays under Gemini's ~20 MB inline request limit (base64 is ~33% larger than the file).
+// shortcut: bigger sets of files would need Gemini's Files API upload; add it if students hit this.
+const BUDGET_CHARS = 18_000_000
 
 const toBase64 = (blob: Blob) =>
   new Promise<string>((resolve, reject) => {

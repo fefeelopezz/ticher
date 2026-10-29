@@ -1,5 +1,5 @@
 import { z } from "zod"
-import { FileSchema, aiErrorResponse, ask, fileBlocks, tooLarge } from "@/lib/ai"
+import { FileSchema, aiErrorResponse, ask, fileParts, tooLarge } from "@/lib/ai"
 
 const Body = z.object({
   kind: z.enum(["topics", "flashcards", "quiz"]),
@@ -49,18 +49,18 @@ export async function POST(request: Request) {
   ]
     .filter(Boolean)
     .join("\n")
-  const messages = [{ role: "user" as const, content: [...fileBlocks(files), { type: "text" as const, text }] }]
+  const contents = [{ role: "user", parts: [...fileParts(files), { text }] }]
 
   try {
     if (kind === "topics") {
-      const out = await ask(Topics, system, messages, "medium")
+      const out = await ask(Topics, system, contents)
       return Response.json({ topics: out.topics.map((t) => t.trim()).filter(Boolean).slice(0, 8) })
     }
     if (kind === "flashcards") {
-      const out = await ask(Flashcards, system, messages, "medium")
+      const out = await ask(Flashcards, system, contents)
       return Response.json({ cards: out.cards.slice(0, 20) })
     }
-    const out = await ask(Quiz, system, messages, "medium")
+    const out = await ask(Quiz, system, contents)
     // Structured output guarantees the shape, not the values: drop questions with a broken answer key.
     const questions = out.questions.filter((q) => q.options.length >= 2 && q.answer >= 0 && q.answer < q.options.length)
     return Response.json({ questions: questions.slice(0, 15) })

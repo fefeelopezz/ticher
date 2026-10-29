@@ -1,14 +1,10 @@
-import Anthropic from "@anthropic-ai/sdk"
-import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod"
+import { ApiError, GoogleGenAI, type Content, type Part } from "@google/genai"
 import { z } from "zod"
 
-// Any current Claude model ID works here; see docs/conectar-ia.md for the options.
-export const MODEL = process.env.TICHER_MODEL || "claude-opus-5-5"
-
-// Server-side fallback re-runs a declined request on another model; Haiku and older models don't support it.
-const FALLBACK = ["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5", "claude-fable-5-1"].includes(MODEL)
-  ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }
-  : {}
+// Any Gemini model ID works here; see docs/conectar-ia.md for the options.
+export const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash"
+// Free-tier models are often "high demand" (503); a lighter model usually still answers.
+const BUSY_FALLBACK = "gemini-3.5-flash-lite"
 
 export const FileSchema = z.object({
   name: z.string().max(200),
@@ -17,67 +13,69 @@ export const FileSchema = z.object({
 })
 export type FilePayload = z.infer<typeof FileSchema>
 
-// The API accepts requests up to 32 MB; leave room for the rest of the body.
-export const MAX_FILES_CHARS = 30_000_000
+// Gemini accepts inline files up to ~20 MB per request; leave room for the rest of the body.
+export const MAX_FILES_CHARS = 19_000_000
 
-const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const
-type ImageType = (typeof IMAGE_TYPES)[number]
+const INLINE_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp"]
 
-// Study files go first in the conversation so the prompt cache can reuse them on every turn.
-export function fileBlocks(files: FilePayload[]) {
-  const blocks: (Anthropic.Beta.BetaImageBlockParam | Anthropic.Beta.BetaRequestDocumentBlock)[] = []
-  for (const f of files) {
-    if (f.type === "application/pdf") {
-      blocks.push({ type: "document", title: f.name, source: { type: "base64", media_type: "application/pdf", data: f.data } })
-    } else if (IMAGE_TYPES.includes(f.type as ImageType)) {
-      blocks.push({ type: "image", source: { type: "base64", media_type: f.type as ImageType, data: f.data } })
-    } else if (f.type.startsWith("text/") || /\.(md|txt)$/i.test(f.name)) {
-      const text = Buffer.from(f.data, "base64").toString("utf8")
-      blocks.push({ type: "document", title: f.name, source: { type: "text", media_type: "text/plain", data: text } })
+// Study files go first in the conversation; Gemini caches a repeated prefix automatically.
+export function fileParts(files: FilePayload[]): Part[] {
+  return files.flatMap((f): Part[] => {
+    if (INLINE_TYPES.includes(f.type)) return [{ inlineData: { mimeType: f.type, data: f.data } }]
+    if (f.type.startsWith("text/") || /\.(md|txt)$/i.test(f.name)) {
+      return [{ text: `Archivo "${f.name}":\n${Buffer.from(f.data, "base64").toString("utf8")}` }]
     }
-  }
-  const last = blocks.at(-1)
-  if (last) last.cache_control = { type: "ephemeral" }
-  return blocks
+    return []
+  })
 }
 
 export class AiUnavailable extends Error {}
 
-export async function ask<T extends z.ZodType>(
-  schema: T,
-  system: string,
-  messages: Anthropic.Beta.BetaMessageParam[],
-  effort: "low" | "medium" | "high"
-): Promise<z.infer<T>> {
-  if (!process.env.ANTHROPIC_API_KEY) throw new AiUnavailable()
-  const client = new Anthropic()
-  const res = await client.beta.messages.parse({
-    model: MODEL,
-    max_tokens: 16000,
-    system,
-    messages,
-    output_config: { effort, format: betaZodOutputFormat(schema) },
-    ...FALLBACK,
-  })
-  if (res.stop_reason === "refusal") throw new Error("refusal")
-  if (res.parsed_output == null) throw new Error(`no output (${res.stop_reason})`)
-  return res.parsed_output
+export async function ask<T extends z.ZodType>(schema: T, system: string, contents: Content[]): Promise<z.infer<T>> {
+  if (!process.env.GEMINI_API_KEY) throw new AiUnavailable()
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+  const request = (model: string) =>
+    ai.models.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction: system,
+        responseMimeType: "application/json",
+        responseJsonSchema: z.toJSONSchema(schema),
+      },
+    })
+  let res
+  try {
+    res = await request(MODEL)
+  } catch (error) {
+    if (!(error instanceof ApiError && error.status === 503) || MODEL === BUSY_FALLBACK) throw error
+    console.warn(`[ai] ${MODEL} busy, retrying with ${BUSY_FALLBACK}`)
+    res = await request(BUSY_FALLBACK)
+  }
+  if (!res.text) throw new Error(`no output (${res.candidates?.[0]?.finishReason ?? res.promptFeedback?.blockReason})`)
+  // The schema constrains decoding, but validate anyway: the model's JSON is untrusted input.
+  return schema.parse(JSON.parse(res.text))
 }
 
 // Maps failures to a short Spanish message for the student; details go to the server log.
 export function aiErrorResponse(error: unknown) {
   if (error instanceof AiUnavailable) {
-    return Response.json({ error: "Configura ANTHROPIC_API_KEY en .env.local para activar la IA." }, { status: 503 })
+    return Response.json({ error: "Configura GEMINI_API_KEY en .env.local para activar la IA." }, { status: 503 })
   }
   console.error("[ai]", error)
-  if (error instanceof Anthropic.AuthenticationError) {
-    return Response.json({ error: "La API key de Anthropic no es válida." }, { status: 502 })
-  }
-  if (error instanceof Anthropic.RateLimitError) {
-    return Response.json({ error: "Demasiadas solicitudes. Espera un momento e intenta de nuevo." }, { status: 429 })
-  }
-  if (error instanceof Anthropic.BadRequestError) {
-    return Response.json({ error: "La IA no pudo procesar la solicitud (¿archivo muy grande o modelo no válido?)." }, { status: 400 })
+  if (error instanceof ApiError) {
+    if (error.status === 401 || error.status === 403 || /API key/i.test(error.message)) {
+      return Response.json({ error: "La API key de Gemini no es válida." }, { status: 502 })
+    }
+    if (error.status === 503) {
+      return Response.json({ error: "Gemini está saturado en este momento. Intenta de nuevo en un minuto." }, { status: 503 })
+    }
+    if (error.status === 429) {
+      return Response.json({ error: "Llegaste al límite de uso de Gemini. Espera un momento e intenta de nuevo." }, { status: 429 })
+    }
+    if (error.status === 400 || error.status === 404) {
+      return Response.json({ error: "La IA no pudo procesar la solicitud (¿archivo muy grande o modelo no válido?)." }, { status: 400 })
+    }
   }
   return Response.json({ error: "La IA no está disponible ahora. Intenta de nuevo." }, { status: 502 })
 }
