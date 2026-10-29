@@ -100,6 +100,30 @@ Nombre de la universidad y año, podio semanal de estrellas, "Clasificación de 
 5. Pomodoro.
 6. Dashboard: cuenta regresiva grande, tiempo de estudio, racha.
 
+## 8. Ronda REA: exámenes, cuestionarios y resúmenes (29 oct 2026)
+
+Fuentes: diccionario público `/api/i18n/es-MX` y análisis estático con REA de los 43 chunks JS públicos
+(Evidence `ev_1f310745…`, 2,3 MB, 42 archivos parseados). Las pantallas con sesión no se ejecutaron;
+el código de esas rutas no está en los chunks públicos, así que el examen escrito sale solo de los textos.
+
+**Observado en el código de Astra (esquemas zod en un chunk compartido):**
+- Tipos de lección: `exercise, knowledge-gap, podcast, quiz, flashcards, spaced-repetition, true-false-quiz, smart-text, video`; modos `learn / practice / exam`; meta de dominio por defecto **75**.
+- **Quiz**: preguntas `single` (4 opciones, `answerId`) o `multiple` (4 opciones, `answerIds` ≥ 2). Al terminar guarda `timeTakenSeconds`, `score` 0-100 y `analysis` opcional.
+- **Smart text**: `readingTime`, `title`, `introduction`, `sections[{title, summary?, revisit?, blocks}]`; los bloques (paragraph / cards / steps) pueden llevar un quiz o verdadero/falso incrustado y un `retest`.
+- **Verdadero/Falso**: enunciados con `answer` y `correctedStatement` cuando es falso.
+
+**Visto en los textos (i18n):**
+- *Cuestionario*: "Varias respuestas posibles", "Revisar", "Explicación", número de preguntas, dificultad Básico/Medio/Avanzado, resultados con Precisión, Tiempo utilizado, Fortalezas y Puntos débiles.
+- *Examen escrito simulado*: elegir temas, límite de tiempo o "Sin límite", "Este examen tendrá N tareas"; la IA califica: puntaje, qué está bien, qué falta, solución, "Buen dominio" y "Por repasar".
+- *Texto inteligente*: "N min de lectura", conceptos con **La idea / Analogía / Importancia**, cierra con "Ponte a prueba".
+
+**Llevado a Ticher:**
+- ✅ Cuestionario con preguntas de una o varias respuestas, Revisar + explicación, 5/10/15 preguntas, dificultad, resultados e historial.
+- ✅ Cuestionario rápido por tema (botón en cada tema) y al final de cada resumen.
+- ✅ Examen escrito simulado: temas, límite de tiempo con envío automático, calificación por IA (`/api/grade`), historial en Progreso → Simulacros.
+- ✅ Resumen (texto inteligente) por tema con idea / analogía / importancia y tiempo de lectura.
+- ➕ Pendiente: Verdadero/Falso, Repetición espaciada, "Áreas de mejora" detectadas por IA, pódcast y video.
+
 ## Tus notas
 
 - 

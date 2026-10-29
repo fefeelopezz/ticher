@@ -27,7 +27,49 @@ export const SUBJECTS = [
 
 export type Card = { topic: string; front: string; back: string }
 
-export type Question = { topic: string; question: string; options: string[]; answer: number; explanation: string }
+// Multiple choice; `correct` holds every right option (Astra: "Varias respuestas posibles").
+export type Question = { topic: string; question: string; options: string[]; correct: number[]; explanation: string }
+
+export type Difficulty = "basico" | "medio" | "avanzado"
+
+export type QuizResult = { byTopic: Record<string, number>; accuracy: number; seconds: number; count: number }
+
+// Astra's "Texto inteligente", as observed in a real lesson: one step per section with text,
+// callout boxes, cards, numbered steps and an inline quick check; a short quiz closes the lesson.
+export type Callout = { kind: "definicion" | "ejemplo" | "analogia" | "error"; title: string; text: string }
+
+export type SummarySection = {
+  title: string
+  subtitle: string
+  body: string
+  callouts: Callout[]
+  cards: { title: string; text: string }[]
+  steps: { title: string; text: string }[]
+  check?: Question
+}
+
+export type Summary = { title: string; intro: string; sections: SummarySection[]; finalQuiz: Question[] }
+
+// Summaries saved before the step layout have no `body`; they are regenerated on open.
+export const isCurrentSummary = (s?: Summary): s is Summary =>
+  !!s?.sections?.length && s.sections.every((x) => typeof x.body === "string") && Array.isArray(s.finalQuiz)
+
+export type MockTask = { topic: string; prompt: string }
+export type MockGrade = { score: number; correct: string; missing: string; solution: string }
+
+// One attempt at Astra's "Examen escrito simulado": written answers graded by the AI.
+export type MockAttempt = {
+  id: string
+  date: string
+  limitMin: number | null
+  seconds: number
+  tasks: MockTask[]
+  answers: string[]
+  grades: MockGrade[]
+  score: number
+  strengths: string
+  toReview: string
+}
 
 export type ExamPrep = {
   id: string
@@ -40,6 +82,9 @@ export type ExamPrep = {
   topics?: Topic[]
   history?: Point[]
   cards?: Card[]
+  summaries?: Record<string, Summary>
+  attempts?: MockAttempt[]
+  quizzes?: { date: string; accuracy: number; count: number }[]
 }
 
 export const DEFAULT_GOAL = 75
@@ -80,6 +125,8 @@ export type Material = {
   name: string
   size: number
   type: string
+  // PDFs only: characters of the Markdown copy (0 = scanned, no text; missing = not converted yet).
+  markdown?: number
 }
 
 export type Subject = {
@@ -138,6 +185,15 @@ export function write<T>(key: string, initial: T, next: T | ((prev: T) => T)) {
   }
   listeners.forEach((l) => l())
 }
+
+// False during server render and hydration, when localStorage isn't readable yet; use it to avoid
+// flashing "not found" states for data that is about to load.
+export const useHydrated = () =>
+  useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
 
 // Counts a study minute every 60 s while the page is visible (used on the chat and exam pages).
 export function useStudyTimer() {

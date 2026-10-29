@@ -1,11 +1,11 @@
 "use client"
 
-import { useState } from "react"
-import { Check, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { cn } from "@/lib/utils"
-import type { Card, Question } from "@/lib/store"
+import { QuestionCard, ScoreRing } from "@/components/question-card"
+import { isRight, scoreByTopic } from "@/lib/grading"
+import type { Card, Difficulty, Question, QuizResult } from "@/lib/store"
 
 type CardsProps = {
   cards: Card[]
@@ -87,89 +87,123 @@ export function Flashcards({ cards, open, onOpenChange, onResult }: CardsProps) 
   )
 }
 
-type QuizProps = {
-  questions: Question[]
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onFinish: (scoreByTopic: Record<string, number>, total: number) => void
+// Shared setup controls for the quiz and the mock exam (Astra: "Selecciona temas", "Establecer dificultad").
+export function TopicPicker({ topics, selected, onChange }: { topics: string[]; selected: string[]; onChange: (t: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Temas">
+      {topics.map((t) => {
+        const on = selected.includes(t)
+        return (
+          <Button
+            key={t}
+            type="button"
+            size="sm"
+            variant={on ? "default" : "outline"}
+            aria-pressed={on}
+            className="h-auto whitespace-normal py-1 text-left"
+            onClick={() => onChange(on ? selected.filter((s) => s !== t) : [...selected, t])}
+          >
+            {t}
+          </Button>
+        )
+      })}
+    </div>
+  )
 }
 
-export function PracticeExam({ questions, open, onOpenChange, onFinish }: QuizProps) {
-  const [answers, setAnswers] = useState<(number | null)[]>(() => questions.map(() => null))
-  const [submitted, setSubmitted] = useState(false)
-  const correct = questions.filter((q, i) => answers[i] === q.answer).length
-  const total = questions.length ? Math.round((correct / questions.length) * 100) : 0
+const LEVELS: [Difficulty, string][] = [
+  ["basico", "Básico"],
+  ["medio", "Medio"],
+  ["avanzado", "Avanzado"],
+]
 
-  function submit() {
-    setSubmitted(true)
-    const byTopic: Record<string, { right: number; count: number }> = {}
-    questions.forEach((q, i) => {
-      const t = (byTopic[q.topic] ??= { right: 0, count: 0 })
-      t.count++
-      if (answers[i] === q.answer) t.right++
-    })
-    onFinish(
-      Object.fromEntries(Object.entries(byTopic).map(([topic, t]) => [topic, Math.round((t.right / t.count) * 100)])),
-      total
-    )
+export function DifficultyPicker({ value, onChange }: { value: Difficulty; onChange: (d: Difficulty) => void }) {
+  return (
+    <div className="flex gap-2" role="radiogroup" aria-label="Dificultad">
+      {LEVELS.map(([v, label]) => (
+        <Button key={v} type="button" size="sm" role="radio" aria-checked={value === v} variant={value === v ? "default" : "outline"} onClick={() => onChange(v)}>
+          {label}
+        </Button>
+      ))}
+    </div>
+  )
+}
+
+export const formatTime = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`
+
+
+type QuizProps = {
+  title?: string
+  questions: Question[]
+  onClose: () => void
+  onFinish: (result: QuizResult) => void
+}
+
+// Astra's "Cuestionario": one question at a time, "Revisar" shows the explanation, results show accuracy and time.
+export function Quiz({ title = "Cuestionario", questions, onClose, onFinish }: QuizProps) {
+  const [index, setIndex] = useState(0)
+  const [answers, setAnswers] = useState<number[][]>([])
+  const [result, setResult] = useState<QuizResult | null>(null)
+  const startedAt = useRef(0)
+  useEffect(() => {
+    startedAt.current = Date.now()
+  }, [])
+
+  const q = questions[index]
+  const last = index === questions.length - 1
+
+  function answered(_right: boolean, chosen: number[]) {
+    const all = [...answers, chosen]
+    setAnswers(all)
+    if (!last) return setIndex(index + 1)
+    const correct = questions.filter((qq, i) => isRight(qq.correct, all[i])).length
+    const done = {
+      byTopic: scoreByTopic(questions, all),
+      accuracy: Math.round((correct / questions.length) * 100),
+      seconds: Math.round((Date.now() - startedAt.current) / 1000),
+      count: questions.length,
+    }
+    setResult(done)
+    onFinish(done)
   }
 
+  const strong = result ? Object.entries(result.byTopic).filter(([, s]) => s >= 70).map(([t]) => t) : []
+  const weak = result ? Object.entries(result.byTopic).filter(([, s]) => s < 70).map(([t]) => t) : []
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-2xl">
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Examen de práctica</DialogTitle>
-          <DialogDescription>
-            {submitted ? `Resultado: ${correct} de ${questions.length} (${total}%)` : `${questions.length} preguntas de opción múltiple`}
-          </DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{result ? "Resultados" : `Pregunta ${index + 1} de ${questions.length} · ${q.topic}`}</DialogDescription>
         </DialogHeader>
-        <ol className="space-y-6">
-          {questions.map((q, i) => (
-            <li key={i} className="space-y-2">
-              <p className="font-medium">
-                {i + 1}. {q.question}
+
+        {result ? (
+          <div className="space-y-5">
+            <div className="flex flex-col items-center gap-2 rounded-2xl border p-6 text-center">
+              <ScoreRing value={result.accuracy} size={72} />
+              <p className="text-lg font-semibold">Cuestionario completado</p>
+              <p className="text-sm text-muted-foreground">
+                {Math.round((result.accuracy / 100) * result.count)}/{result.count} respuestas correctas · {formatTime(result.seconds)}
               </p>
-              <div className="grid gap-2" role="radiogroup" aria-label={`Pregunta ${i + 1}`}>
-                {q.options.map((option, j) => {
-                  const chosen = answers[i] === j
-                  const right = submitted && j === q.answer
-                  const wrong = submitted && chosen && j !== q.answer
-                  return (
-                    <button
-                      key={j}
-                      type="button"
-                      role="radio"
-                      aria-checked={chosen}
-                      disabled={submitted}
-                      onClick={() => setAnswers(answers.map((a, k) => (k === i ? j : a)))}
-                      className={cn(
-                        "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-                        chosen && !submitted && "border-primary bg-primary/10",
-                        right && "border-green-600 bg-green-600/10",
-                        wrong && "border-destructive bg-destructive/10",
-                        !submitted && "hover:bg-muted"
-                      )}
-                    >
-                      {right && <Check className="size-4 shrink-0 text-green-600" />}
-                      {wrong && <X className="size-4 shrink-0 text-destructive" />}
-                      {option}
-                    </button>
-                  )
-                })}
-              </div>
-              {submitted && <p className="text-sm text-muted-foreground">{q.explanation}</p>}
-            </li>
-          ))}
-        </ol>
-        <DialogFooter>
-          {submitted ? (
-            <Button onClick={() => onOpenChange(false)}>Listo</Button>
-          ) : (
-            <Button disabled={answers.some((a) => a === null)} onClick={submit}>
-              Calificar
-            </Button>
-          )}
-        </DialogFooter>
+              <p className="font-medium">
+                {result.accuracy >= 80 ? "¡Excelente trabajo!" : result.accuracy >= 50 ? "¡Vas avanzando!" : "Puedes mejorar"}
+              </p>
+            </div>
+            {strong.length > 0 && <p className="text-sm">💪 Fortalezas: {strong.join(", ")}</p>}
+            {weak.length > 0 && <p className="text-sm">⚡ Puntos débiles: {weak.join(", ")}</p>}
+            <DialogFooter>
+              <Button onClick={onClose}>Listo</Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-all" style={{ width: `${(index / questions.length) * 100}%` }} />
+            </div>
+            <QuestionCard key={index} question={q} continueLabel={last ? "Ver resultados" : "Continuar"} onDone={answered} />
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

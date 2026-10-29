@@ -3,56 +3,53 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, BookOpen, Layers, ListChecks, Plus, Sparkles, Trash2 } from "lucide-react"
+import { ArrowLeft, BookOpen, FileText, Layers, ListChecks, PenLine, Plus, Sparkles, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Flashcards, PracticeExam } from "@/components/exam-practice"
+import { DifficultyPicker, Flashcards, Quiz, TopicPicker, formatTime } from "@/components/exam-practice"
+import { MockExam, type Graded } from "@/components/mock-exam"
 import { GoalBar } from "@/components/goal-bar"
-import { postJson } from "@/lib/api"
-import { toPayload } from "@/lib/files"
 import {
   DEFAULT_GOAL,
   NO_EVENTS,
   NO_LESSONS,
-  NO_PREPS,
-  NO_SUBJECTS,
-  blend,
+  average,
   bump,
   daysUntil,
   forecast,
   readiness,
   today,
-  useStored,
   useStudyTimer,
-  withSnapshot,
   write,
   type Card as StudyCard,
   type CalendarEvent,
-  type ExamPrep,
+  type Difficulty,
+  type MockAttempt,
+  type MockTask,
   type Question,
-  type Subject,
   type Topic,
 } from "@/lib/store"
+import { applyScores, same, usePrep } from "@/lib/use-prep"
 
-type Kind = "topics" | "flashcards" | "quiz"
-
-const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+const QUIZ_SIZES = [5, 10, 15]
 
 export default function PrepPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const [preps, setPreps] = useStored<ExamPrep[]>("preps", NO_PREPS)
-  const [subjects] = useStored<Subject[]>("subjects", NO_SUBJECTS)
-  const [busy, setBusy] = useState<Kind | null>(null)
+  const { prep, hydrated, materials, busy, setPreps, update, generate, recordQuiz } = usePrep(id)
   const [newTopic, setNewTopic] = useState("")
   const [cardsOpen, setCardsOpen] = useState(false)
-  const [quiz, setQuiz] = useState<{ key: number; questions: Question[] } | null>(null)
+  const [quiz, setQuiz] = useState<{ key: number; title: string; questions: Question[] } | null>(null)
+  const [quizSetup, setQuizSetup] = useState<{ topics: string[]; count: number; difficulty: Difficulty } | null>(null)
+  const [mock, setMock] = useState<{ key: number; review?: MockAttempt } | null>(null)
   useStudyTimer()
 
-  const prep = preps.find((p) => p.id === id)
+  if (!prep && !hydrated) return null
   if (!prep) {
     return (
       <div className="mx-auto max-w-md space-y-4 px-4 py-16 text-center">
@@ -66,6 +63,8 @@ export default function PrepPage() {
 
   const goal = prep.goal ?? DEFAULT_GOAL
   const topics = prep.topics ?? []
+  // Quizzes and mock exams need topics; before they exist the whole subject counts as one.
+  const topicNames = topics.length ? topics.map((t) => t.name) : [prep.subject]
   const score = readiness(prep)
   const days = daysUntil(prep.date)
   const projected = forecast(score, prep.history ?? [], prep.date)
@@ -74,19 +73,9 @@ export default function PrepPage() {
   const inGoal = topics.filter((t) => t.mastery >= goal).length
   const next = topics.find((t) => t.mastery < goal)
   const weak = topics.filter((t) => t.mastery < goal).sort((a, b) => a.mastery - b.mastery).slice(0, 3)
-  const materials = subjects.find((s) => same(s.name, prep.subject))?.materials ?? []
-
-  // Every change re-derives readiness and records today's snapshot for the forecast.
-  function update(fn: (p: ExamPrep) => ExamPrep) {
-    setPreps((all) =>
-      all.map((p) => {
-        if (p.id !== id) return p
-        const changed = fn(p)
-        const mastery = readiness(changed)
-        return { ...changed, mastery, history: withSnapshot(changed.history, mastery) }
-      })
-    )
-  }
+  const attempts = prep.attempts ?? []
+  const quizzes = prep.quizzes ?? []
+  const summaryHref = (topic: Topic) => `/exams/${id}/summary/${topic.id}`
 
   const adjustTopics = (fn: (t: Topic) => Topic) => update((p) => ({ ...p, topics: (p.topics ?? []).map(fn) }))
 
@@ -109,24 +98,6 @@ export default function PrepPage() {
     })
   }
 
-  async function generate<T>(kind: Kind): Promise<T | undefined> {
-    setBusy(kind)
-    try {
-      const { files, skipped } = await toPayload(materials)
-      if (skipped.length) toast.info(`No se enviaron a la IA: ${skipped.join(", ")} (formato no compatible o muy grande).`)
-      return await postJson<T>("/api/generate", {
-        kind,
-        exam: { name: prep!.name, subject: prep!.subject },
-        topics: topics.map((t) => t.name),
-        files,
-      })
-    } catch (e) {
-      toast.error((e as Error).message)
-    } finally {
-      setBusy(null)
-    }
-  }
-
   async function generateTopics() {
     const res = await generate<{ topics: string[] }>("topics")
     if (res) addTopics(res.topics)
@@ -140,20 +111,18 @@ export default function PrepPage() {
     setCardsOpen(true)
   }
 
-  async function startQuiz() {
-    const res = await generate<{ questions: Question[] }>("quiz")
-    if (res?.questions.length) setQuiz((prev) => ({ key: (prev?.key ?? 0) + 1, questions: res.questions }))
+  async function startQuiz(title: string, topicsToAsk: string[], count: number, difficulty: Difficulty, busyKey: string) {
+    const res = await generate<{ questions: Question[] }>("quiz", { topics: topicsToAsk, count, difficulty }, busyKey)
+    if (!res?.questions.length) return false
+    setQuiz((prev) => ({ key: (prev?.key ?? 0) + 1, title, questions: res.questions }))
+    return true
   }
 
-  function finishQuiz(byTopic: Record<string, number>, total: number) {
-    if (topics.length) {
-      adjustTopics((t) => {
-        const hit = Object.entries(byTopic).find(([name]) => same(name, t.name))
-        return hit ? { ...t, mastery: blend(t.mastery, hit[1]) } : t
-      })
-    } else {
-      update((p) => ({ ...p, mastery: blend(p.mastery, total) }))
-    }
+  async function finishMock(attempt: MockAttempt) {
+    const byTopic: Record<string, number[]> = {}
+    attempt.tasks.forEach((t, i) => (byTopic[t.topic] ??= []).push(attempt.grades[i].score))
+    const scores = Object.fromEntries(Object.entries(byTopic).map(([t, s]) => [t, average(s)]))
+    update((p) => ({ ...applyScores(p, scores, attempt.score), attempts: [attempt, ...(p.attempts ?? [])].slice(0, 20) }))
   }
 
   function remove() {
@@ -241,10 +210,13 @@ export default function PrepPage() {
                     <CardTitle>{next.name}</CardTitle>
                   </CardHeader>
                   <CardContent className="flex flex-wrap gap-2">
+                    <Button variant="outline" nativeButton={false} render={<Link href={summaryHref(next)} />}>
+                      <FileText /> Leer resumen
+                    </Button>
                     <Button nativeButton={false} render={<Link href={lessonHref(next.name)} />}>
                       <BookOpen /> Lección con el tutor
                     </Button>
-                    <Button variant="outline" onClick={() => completeLesson(next)}>
+                    <Button variant="ghost" onClick={() => completeLesson(next)}>
                       Completé la lección
                     </Button>
                   </CardContent>
@@ -265,7 +237,28 @@ export default function PrepPage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      aria-label={`Resumen de ${t.name}`}
+                      title="Resumen"
+                      nativeButton={false}
+                      render={<Link href={summaryHref(t)} />}
+                    >
+                      <FileText />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Cuestionario de ${t.name}`}
+                      title="Cuestionario"
+                      disabled={busy !== null}
+                      onClick={() => startQuiz(`Cuestionario: ${t.name}`, [t.name], 5, "medio", `quiz:${t.id}`)}
+                    >
+                      <ListChecks className={busy === `quiz:${t.id}` ? "animate-pulse" : ""} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
                       aria-label={`Lección de ${t.name}`}
+                      title="Lección con el tutor"
                       nativeButton={false}
                       render={<Link href={lessonHref(t.name)} />}
                     >
@@ -297,7 +290,7 @@ export default function PrepPage() {
             </Button>
           </form>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Card size="sm">
               <CardHeader>
                 <Layers className="size-4" />
@@ -306,7 +299,7 @@ export default function PrepPage() {
                   {prep.cards?.length ? `${prep.cards.length} tarjetas listas` : "Repasa conceptos clave rápido."}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex gap-2">
+              <CardContent className="flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => openCards()} disabled={busy !== null}>
                   {busy === "flashcards" ? "Creando…" : prep.cards?.length ? "Repasar" : "Crear tarjetas"}
                 </Button>
@@ -320,12 +313,28 @@ export default function PrepPage() {
             <Card size="sm">
               <CardHeader>
                 <ListChecks className="size-4" />
-                <CardTitle>Examen de práctica</CardTitle>
-                <CardDescription>Descubre cómo te iría en el examen real.</CardDescription>
+                <CardTitle>Cuestionario</CardTitle>
+                <CardDescription>Opción múltiple con explicación de cada respuesta.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button size="sm" onClick={startQuiz} disabled={busy !== null}>
-                  {busy === "quiz" ? "Creando examen…" : "Crear examen de práctica"}
+                <Button
+                  size="sm"
+                  disabled={busy !== null}
+                  onClick={() => setQuizSetup({ topics: topicNames, count: 10, difficulty: "medio" })}
+                >
+                  Crear cuestionario
+                </Button>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardHeader>
+                <PenLine className="size-4" />
+                <CardTitle>Examen escrito simulado</CardTitle>
+                <CardDescription>Responde preguntas y obtén una calificación.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button size="sm" disabled={busy !== null} onClick={() => setMock((prev) => ({ key: (prev?.key ?? 0) + 1 }))}>
+                  Comenzar simulacro
                 </Button>
               </CardContent>
             </Card>
@@ -347,6 +356,45 @@ export default function PrepPage() {
               </Card>
             ))}
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Simulacros</CardTitle>
+              <CardDescription>
+                {attempts.length
+                  ? `${attempts.length} exámenes escritos · promedio ${average(attempts.map((a) => a.score))}/100`
+                  : "Aún no presentas un examen escrito simulado."}
+              </CardDescription>
+            </CardHeader>
+            {attempts.length > 0 && (
+              <CardContent className="space-y-2">
+                {attempts.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setMock((prev) => ({ key: (prev?.key ?? 0) + 1, review: a }))}
+                    className="flex w-full justify-between rounded-lg border p-3 text-left text-sm hover:bg-muted/50"
+                  >
+                    <span>
+                      {a.date} · {a.tasks.length} tareas · {formatTime(a.seconds)}
+                    </span>
+                    <span className="font-medium">{a.score}/100</span>
+                  </button>
+                ))}
+              </CardContent>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Cuestionarios</CardTitle>
+              <CardDescription>
+                {quizzes.length
+                  ? `${quizzes.length} cuestionarios · precisión promedio ${average(quizzes.map((q) => q.accuracy))}%`
+                  : "Aún no haces cuestionarios."}
+              </CardDescription>
+            </CardHeader>
+          </Card>
 
           <Card>
             <CardHeader>
@@ -400,13 +448,69 @@ export default function PrepPage() {
         onOpenChange={setCardsOpen}
         onResult={(topic, knew) => knew && adjustTopics((t) => (same(t.name, topic) ? { ...t, mastery: bump(t.mastery, 3) } : t))}
       />
-      {quiz && (
-        <PracticeExam
-          key={quiz.key}
-          questions={quiz.questions}
-          open
-          onOpenChange={(o) => !o && setQuiz(null)}
-          onFinish={finishQuiz}
+
+      {quizSetup && (
+        <Dialog open onOpenChange={(o) => !o && setQuizSetup(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Nuevo cuestionario</DialogTitle>
+              <DialogDescription>Opción múltiple; algunas preguntas tienen varias respuestas correctas.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <Label>Selecciona temas</Label>
+                <TopicPicker topics={topicNames} selected={quizSetup.topics} onChange={(t) => setQuizSetup({ ...quizSetup, topics: t })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Número de preguntas</Label>
+                <div className="flex gap-2" role="radiogroup" aria-label="Número de preguntas">
+                  {QUIZ_SIZES.map((n) => (
+                    <Button
+                      key={n}
+                      type="button"
+                      size="sm"
+                      role="radio"
+                      aria-checked={quizSetup.count === n}
+                      variant={quizSetup.count === n ? "default" : "outline"}
+                      onClick={() => setQuizSetup({ ...quizSetup, count: n })}
+                    >
+                      {n} preguntas
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Dificultad</Label>
+                <DifficultyPicker value={quizSetup.difficulty} onChange={(d) => setQuizSetup({ ...quizSetup, difficulty: d })} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={!quizSetup.topics.length || busy !== null}
+                onClick={async () => {
+                  if (await startQuiz("Cuestionario", quizSetup.topics, quizSetup.count, quizSetup.difficulty, "quiz")) setQuizSetup(null)
+                }}
+              >
+                {busy === "quiz" ? "Creando cuestionario…" : "Comenzar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {quiz && <Quiz key={quiz.key} title={quiz.title} questions={quiz.questions} onClose={() => setQuiz(null)} onFinish={recordQuiz} />}
+
+      {mock && (
+        <MockExam
+          key={mock.key}
+          topics={topicNames}
+          review={mock.review}
+          create={async (chosen, count, difficulty) =>
+            (await generate<{ tasks: MockTask[] }>("mock", { topics: chosen, count, difficulty }))?.tasks
+          }
+          grade={(tasks, answers) => generate<Graded>("grade", { tasks, answers })}
+          onDone={finishMock}
+          onClose={() => setMock(null)}
         />
       )}
     </div>

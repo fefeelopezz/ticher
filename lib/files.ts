@@ -22,9 +22,16 @@ async function run<T>(mode: IDBTransactionMode, op: (store: IDBObjectStore) => I
 
 export const saveFile = (id: string, file: Blob) => run("readwrite", (s) => s.put(file, id))
 export const getFile = (id: string) => run<Blob | undefined>("readonly", (s) => s.get(id))
-export const deleteFile = (id: string) => run("readwrite", (s) => s.delete(id))
+// A PDF's Markdown copy is stored beside it under its own key.
+export const mdKey = (id: string) => `${id}.md`
 
-type Sendable = { id: string; name: string; type: string }
+// Also drops the Markdown copy, if the file had one, so nothing is left orphaned.
+export const deleteFile = async (id: string) => {
+  await run("readwrite", (s) => s.delete(id))
+  await run("readwrite", (s) => s.delete(mdKey(id)))
+}
+
+type Sendable = { id: string; name: string; type: string; markdown?: number }
 
 // Formats Gemini reads directly; Word/PowerPoint would need converting first.
 const isSendable = (m: Sendable) => /^(application\/pdf|image\/(png|jpeg|gif|webp)|text\/)/.test(m.type) || /\.(md|txt)$/i.test(m.name)
@@ -47,14 +54,20 @@ export async function toPayload(materials: Sendable[]) {
   const skipped: string[] = []
   let used = 0
   for (const m of materials) {
-    const blob = isSendable(m) ? await getFile(m.id).catch(() => undefined) : undefined
+    // Converted PDFs go as their Markdown text: a fraction of the size and much cheaper for the AI to read.
+    const md = (m.markdown ?? 0) > 0 ? await getFile(mdKey(m.id)).catch(() => undefined) : undefined
+    const blob = md ?? (isSendable(m) ? await getFile(m.id).catch(() => undefined) : undefined)
     const data = blob ? await toBase64(blob) : ""
     if (!data || used + data.length > BUDGET_CHARS) {
       skipped.push(m.name)
       continue
     }
     used += data.length
-    files.push({ name: m.name, type: m.type || "text/plain", data })
+    files.push(
+      md
+        ? { name: m.name.replace(/\.pdf$/i, "") + ".md", type: "text/markdown", data }
+        : { name: m.name, type: m.type || "text/plain", data }
+    )
   }
   return { files, skipped }
 }
