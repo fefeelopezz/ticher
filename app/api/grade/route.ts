@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { FileSchema, aiErrorResponse, ask, fileParts, tooLarge } from "@/lib/ai"
+import { getSession, unauthorized } from "@/lib/auth"
 
 const Body = z
   .object({
@@ -26,6 +27,7 @@ const Grades = z.object({
 })
 
 export async function POST(request: Request) {
+  if (!(await getSession())) return unauthorized()
   const body = Body.safeParse(await request.json().catch(() => null))
   if (!body.success) return Response.json({ error: "Solicitud inválida." }, { status: 400 })
   const { exam, tasks, answers, files } = body.data

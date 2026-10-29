@@ -2,7 +2,7 @@
 
 import { Suspense } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
   BarChart3,
@@ -12,6 +12,7 @@ import {
   Moon,
   Settings,
   Sun,
+  LogOut,
   Trash2,
   type LucideIcon,
 } from "lucide-react"
@@ -29,6 +30,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { postJson } from "@/lib/api"
 import { deleteFile } from "@/lib/files"
 import { DEFAULT_PROFILE, NO_CHATS, useStored, type Chat, type Profile } from "@/lib/store"
 
@@ -72,6 +74,13 @@ function Nav({ items }: { items: NavItem[] }) {
 
 export function AppSidebar() {
   const { resolvedTheme, setTheme } = useTheme()
+  const router = useRouter()
+
+  async function logout() {
+    await postJson("/api/auth/logout", {}).catch(() => {})
+    router.replace("/login")
+    router.refresh()
+  }
   const [chats, setChats] = useStored<Chat[]>("chats", NO_CHATS)
 
   function removeChat(chat: Chat) {
@@ -131,6 +140,12 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <Nav items={SETTINGS} />
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={logout}>
+              <LogOut />
+              <span>Cerrar sesión</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem className="flex items-center gap-2 px-2 py-2">
             <Avatar className="size-7">
               <AvatarFallback>{name[0].toUpperCase()}</AvatarFallback>

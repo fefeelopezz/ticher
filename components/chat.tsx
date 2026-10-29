@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState, useSyncExternalStore } from "react"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowUp, BookOpen, GraduationCap, Lightbulb, Mic, Paperclip, Plus, X } from "lucide-react"
@@ -12,10 +12,12 @@ import { SubjectSelect } from "@/components/subject-select"
 import { openMaterial, storeFiles } from "@/components/subjects-section"
 import { postJson } from "@/lib/api"
 import { toPayload } from "@/lib/files"
+import { cn } from "@/lib/utils"
 import {
   DEFAULT_PROFILE,
   NO_CHATS,
   NO_SUBJECTS,
+  useHydrated,
   useStored,
   useStudyTimer,
   write,
@@ -43,6 +45,40 @@ const noop = () => () => {}
 
 const ATTACH_ACCEPT = "application/pdf,image/png,image/jpeg,image/gif,image/webp,.txt,.md"
 
+// Home greetings; one is picked per visit and {name} becomes the signed-in student's first name.
+const GREETINGS = [
+  "¿Algo se te complica, {name}?",
+  "Resolvamos algo, {name}",
+  "¿Qué estudiamos hoy, {name}?",
+  "¿En qué te ayudo, {name}?",
+  "Vamos con todo, {name}",
+  "Hola {name}, ¿qué aprendemos hoy?",
+]
+
+// Reveals a reply progressively (about 2 s whatever its length). It reveals text without moving anything,
+// so it also runs when the OS asks for reduced motion (Windows often has that on by default).
+function TypedText({ text, onDone }: { text: string; onDone: () => void }) {
+  const [shown, setShown] = useState(0)
+  const done = shown >= text.length
+  useEffect(() => {
+    if (done) {
+      onDone()
+      return
+    }
+    const step = Math.max(2, Math.ceil(text.length / 120))
+    const id = setTimeout(() => setShown((s) => Math.min(text.length, s + step)), 16)
+    return () => clearTimeout(id)
+    // onDone is a fresh closure each render; re-running only on progress is intended.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, done, text.length])
+  return (
+    <>
+      {text.slice(0, shown)}
+      {!done && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary align-middle" aria-hidden />}
+    </>
+  )
+}
+
 type Props = { chatId?: string; initialPrompt?: string; initialSubject?: string }
 
 export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
@@ -61,6 +97,9 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const [listening, setListening] = useState(false)
   const canDictate = useSyncExternalStore(noop, () => !!getRecognition(), () => false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [typing, setTyping] = useState<number | null>(null)
+  const [greeting] = useState(() => Math.floor(Math.random() * GREETINGS.length))
+  const hydrated = useHydrated()
   useStudyTimer()
 
   const chat = chats.find((c) => c.id === id)
@@ -109,7 +148,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
         suggestions: data.suggestions,
         updatedAt: Date.now(),
       }))
-      if (!chatId) router.replace(`/?chat=${current}`, { scroll: false })
+      setTyping(history.length)
     } catch (e) {
       // Drop the unanswered question (and a chat it would leave empty); put it back in the box to retry.
       const failed = current
@@ -159,14 +198,27 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
       <div className="flex flex-1 flex-col gap-4 py-6">
         {messages.length === 0 ? (
           <div className="my-auto space-y-6">
-            <div className="text-center">
-              <h1 className="text-2xl font-semibold tracking-tight">{name ? `Hola, ${name}` : "¿Algo se te complica?"}</h1>
-              <p className="text-muted-foreground">
-                {name ? "¿Algo se te complica? Vamos a resolverlo ahora." : "Vamos a resolverlo ahora."}
-              </p>
+            <div className="space-y-2 text-center animate-in fade-in motion-safe:slide-in-from-bottom-2 duration-700">
+              <h1 className="text-3xl font-semibold tracking-tight text-balance">
+                {name && hydrated ? (
+                  GREETINGS[greeting].split("{name}").map((part, i) => (
+                    <span key={i}>
+                      {i > 0 && <span className="text-primary">{name}</span>}
+                      {part}
+                    </span>
+                  ))
+                ) : (
+                  "¿Algo se te complica?"
+                )}
+              </h1>
+              <p className="text-muted-foreground">Vamos a resolverlo ahora.</p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Card size="sm" className="cursor-pointer" onClick={() => document.querySelector("textarea")?.focus()}>
+            <div className="grid gap-3 sm:grid-cols-2 animate-in fade-in duration-700 delay-150 fill-mode-both">
+              <Card
+                size="sm"
+                className="cursor-pointer transition-all hover:-translate-y-0.5 hover:ring-primary/40"
+                onClick={() => document.querySelector("textarea")?.focus()}
+              >
                 <CardHeader>
                   <Lightbulb className="size-4" />
                   <CardTitle>Ayuda rápida</CardTitle>
@@ -174,7 +226,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
                 </CardHeader>
               </Card>
               <Link href="/exams/new">
-                <Card size="sm" className="h-full">
+                <Card size="sm" className="h-full transition-all hover:-translate-y-0.5 hover:ring-primary/40">
                   <CardHeader>
                     <GraduationCap className="size-4" />
                     <CardTitle>Preparación para examen</CardTitle>
@@ -188,19 +240,37 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
           messages.map((m, i) => (
             <div
               key={i}
-              className={
+              className={cn(
+                "animate-in fade-in motion-safe:slide-in-from-bottom-1 duration-300",
                 m.role === "user"
                   ? "ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2"
                   : "max-w-full whitespace-pre-wrap leading-relaxed"
-              }
+              )}
             >
-              {m.content}
+              {m.role === "assistant" && i === typing ? (
+                <TypedText
+                  text={m.content}
+                  onDone={() => {
+                    setTyping(null)
+                    // Swap to the conversation URL only after the reply finished writing (it remounts the chat).
+                    if (!chatId && id) router.replace(`/?chat=${id}`, { scroll: false })
+                  }}
+                />
+              ) : (
+                m.content
+              )}
             </div>
           ))
         )}
-        {thinking && <p className="animate-pulse text-sm text-muted-foreground">Pensando…</p>}
-        {!thinking && suggestions.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+        {thinking && (
+          <div className="flex items-center gap-1.5 py-2" role="status" aria-label="Pensando">
+            {[0, 150, 300].map((delay) => (
+              <span key={delay} className="size-2 rounded-full bg-primary/70 animate-pulse motion-safe:animate-bounce" style={{ animationDelay: `${delay}ms` }} />
+            ))}
+          </div>
+        )}
+        {!thinking && typing === null && suggestions.length > 0 && (
+          <div className="flex flex-wrap gap-2 animate-in fade-in duration-500">
             {suggestions.map((s) => (
               <Button key={s} variant="outline" size="sm" className="h-auto whitespace-normal py-1 text-left" onClick={() => send(s)}>
                 {s}
@@ -243,7 +313,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
           </div>
         )}
         <form
-          className="flex items-end gap-1 rounded-2xl border bg-background p-2"
+          className="flex items-center gap-1 rounded-2xl border bg-background p-2 shadow-sm transition-colors focus-within:border-primary/50"
           onSubmit={(e) => {
             e.preventDefault()
             send()
@@ -275,7 +345,8 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
             placeholder="Pregunta o sube una foto del ejercicio…"
             aria-label="Mensaje"
             maxLength={4000}
-            className="max-h-40 min-h-10 resize-none border-0 shadow-none focus-visible:ring-0"
+            // The composer box is the field; the textarea itself stays transparent so icons line up on one axis.
+            className="max-h-40 min-h-9 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
           {canDictate && (
             <Button

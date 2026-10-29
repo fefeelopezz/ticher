@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { FileSchema, aiErrorResponse, ask, fileParts, tooLarge } from "@/lib/ai"
+import { getSession, unauthorized } from "@/lib/auth"
 import { cleanQuestions } from "@/lib/grading"
 
 const Body = z.object({
@@ -78,6 +79,7 @@ const Mock = z.object({
 const LEVEL = { basico: "básica", medio: "media", avanzado: "avanzada" }
 
 export async function POST(request: Request) {
+  if (!(await getSession())) return unauthorized()
   const body = Body.safeParse(await request.json().catch(() => null))
   if (!body.success) return Response.json({ error: "Solicitud inválida." }, { status: 400 })
   const { kind, exam, topics, count, difficulty, files } = body.data

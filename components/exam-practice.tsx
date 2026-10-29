@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { QuestionCard, ScoreRing } from "@/components/question-card"
 import { isRight, scoreByTopic } from "@/lib/grading"
+import { cn } from "@/lib/utils"
 import type { Card, Difficulty, Question, QuizResult } from "@/lib/store"
 
 type CardsProps = {
@@ -88,25 +90,47 @@ export function Flashcards({ cards, open, onOpenChange, onResult }: CardsProps) 
 }
 
 // Shared setup controls for the quiz and the mock exam (Astra: "Selecciona temas", "Establecer dificultad").
+// A checklist rather than pills: AI-generated topic names are long and must wrap inside the dialog.
 export function TopicPicker({ topics, selected, onChange }: { topics: string[]; selected: string[]; onChange: (t: string[]) => void }) {
+  const all = selected.length === topics.length
   return (
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Temas">
-      {topics.map((t) => {
-        const on = selected.includes(t)
-        return (
-          <Button
-            key={t}
-            type="button"
-            size="sm"
-            variant={on ? "default" : "outline"}
-            aria-pressed={on}
-            className="h-auto whitespace-normal py-1 text-left"
-            onClick={() => onChange(on ? selected.filter((s) => s !== t) : [...selected, t])}
-          >
-            {t}
-          </Button>
-        )
-      })}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          {selected.length} de {topics.length} seleccionados
+        </span>
+        <button type="button" className="font-medium text-primary hover:underline" onClick={() => onChange(all ? [] : topics)}>
+          {all ? "Quitar todos" : "Seleccionar todos"}
+        </button>
+      </div>
+      <div className="max-h-60 space-y-1.5 overflow-y-auto pr-1" role="group" aria-label="Temas">
+        {topics.map((t) => {
+          const on = selected.includes(t)
+          return (
+            <button
+              key={t}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              onClick={() => onChange(on ? selected.filter((s) => s !== t) : [...selected, t])}
+              className={cn(
+                "flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors",
+                on ? "border-primary/50 bg-primary/10" : "text-muted-foreground hover:bg-muted/50"
+              )}
+            >
+              <span
+                className={cn(
+                  "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded border transition-colors",
+                  on && "border-primary bg-primary text-primary-foreground"
+                )}
+              >
+                {on && <Check className="size-3" strokeWidth={3} />}
+              </span>
+              <span className={cn("leading-snug", on && "text-foreground")}>{t}</span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

@@ -451,7 +451,7 @@ export default function PrepPage() {
 
       {quizSetup && (
         <Dialog open onOpenChange={(o) => !o && setQuizSetup(null)}>
-          <DialogContent>
+          <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
               <DialogTitle>Nuevo cuestionario</DialogTitle>
               <DialogDescription>Opción múltiple; algunas preguntas tienen varias respuestas correctas.</DialogDescription>

@@ -141,6 +141,32 @@ export const NO_EVENTS: CalendarEvent[] = []
 export const NO_LESSONS: string[] = []
 export const DEFAULT_PROFILE: Profile = { name: "", level: "Preparatoria", socratic: false }
 
+// Each signed-in user gets their own slice of localStorage, keyed by the readable ticher_user cookie.
+// The cookie only separates data on a shared browser; access control is the httpOnly session cookie.
+const currentUser = () =>
+  typeof document === "undefined" ? "" : decodeURIComponent(document.cookie.match(/(?:^|;\s*)ticher_user=([^;]*)/)?.[1] ?? "")
+
+export const storageKey = (key: string) => {
+  const user = currentUser()
+  return user ? `ticher.${user}.${key}` : `ticher.${key}`
+}
+
+const DATA_KEYS = ["preps", "subjects", "events", "chats", "lessons", "minutes", "profile"]
+
+// Data saved before login existed belongs to whoever signs in first on this browser.
+export function adoptLegacyData() {
+  for (const key of DATA_KEYS) {
+    const legacy = localStorage.getItem(`ticher.${key}`)
+    const target = storageKey(key)
+    if (legacy === null || target === `ticher.${key}`) continue
+    if (localStorage.getItem(target) === null) localStorage.setItem(target, legacy)
+    localStorage.removeItem(`ticher.${key}`)
+  }
+  listeners.forEach((l) => l())
+}
+
+export const readStored = <T,>(key: string, initial: T) => parse(localStorage.getItem(storageKey(key)), initial)
+
 const listeners = new Set<() => void>()
 
 function subscribe(cb: () => void) {
@@ -156,7 +182,7 @@ function subscribe(cb: () => void) {
 export function useStored<T>(key: string, initial: T) {
   const raw = useSyncExternalStore(
     subscribe,
-    () => localStorage.getItem(`ticher.${key}`),
+    () => localStorage.getItem(storageKey(key)),
     () => null
   )
   const value = useMemo(() => parse(raw, initial), [raw, initial])
@@ -175,7 +201,7 @@ function parse<T>(raw: string | null, initial: T): T {
 
 // Updaters read the latest stored value, so a slow AI call can't overwrite edits made meanwhile.
 export function write<T>(key: string, initial: T, next: T | ((prev: T) => T)) {
-  const k = `ticher.${key}`
+  const k = storageKey(key)
   const value = typeof next === "function" ? (next as (prev: T) => T)(parse(localStorage.getItem(k), initial)) : next
   try {
     localStorage.setItem(k, JSON.stringify(value))
