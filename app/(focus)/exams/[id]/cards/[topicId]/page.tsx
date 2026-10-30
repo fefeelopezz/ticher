@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Flashcards } from "@/components/exam-practice"
 import { FocusShell, Missing, useLessonRoute } from "@/components/focus-shell"
 import { useStudyTimer, type Card as StudyCard } from "@/lib/store"
+import { FocusSkeleton } from "@/components/page-skeletons"
 
 // Tarjetas de repaso as their own page. The whole exam reuses its saved deck;
 // a single topic gets a new deck saved under that topic.
@@ -39,7 +40,7 @@ export default function CardsPage() {
     }
   })
 
-  if (!hydrated) return null
+  if (!hydrated) return <FocusSkeleton />
   if (!found) return <Missing back={back} />
 
   const title = topic?.name ?? "Tarjetas de memoria"

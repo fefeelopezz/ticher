@@ -1,9 +1,10 @@
 import { Suspense } from "react"
 import { Chat } from "@/components/chat"
+import { ChatSkeleton } from "@/components/page-skeletons"
 
 export default function AskPage({ searchParams }: PageProps<"/">) {
   return (
-    <Suspense>
+    <Suspense fallback={<ChatSkeleton />}>
       <ChatFromUrl searchParams={searchParams} />
     </Suspense>
   )

@@ -4,13 +4,14 @@ import { MockExam, type Graded } from "@/components/mock-exam"
 import { Missing, useLessonRoute } from "@/components/focus-shell"
 import { average, useStudyTimer, type MockAttempt, type MockTask } from "@/lib/store"
 import { applyScores } from "@/lib/use-prep"
+import { FocusSkeleton } from "@/components/page-skeletons"
 
 // Examen escrito as its own page: set it up, write the answers, get the AI grade.
 export default function WrittenPage() {
   const { hydrated, update, generate, saveLesson, topic, topicNames, back, found } = useLessonRoute()
   useStudyTimer()
 
-  if (!hydrated) return null
+  if (!hydrated) return <FocusSkeleton />
   if (!found) return <Missing back={back} />
 
   function finish(attempt: MockAttempt) {

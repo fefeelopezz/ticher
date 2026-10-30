@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { ArrowLeft, Check, FileText, Plus, Search, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
@@ -52,6 +53,8 @@ export default function NewExamPage() {
   const [goal, setGoal] = useState(DEFAULT_GOAL)
   const [pending, setPending] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
+  // Name typed in the "Agregar materia" dialog; null while it is closed.
+  const [newSubject, setNewSubject] = useState<string | null>(null)
 
   const mine = subjects.map((s) => s.name)
   const q = search.trim().toLowerCase()
@@ -87,6 +90,17 @@ export default function NewExamPage() {
     ])
     toast.success("Preparación creada")
     router.push(`/exams/${prep.id}`)
+  }
+
+  // Saves the subject under "Agregadas por ti" and selects it; a name that already exists is just selected.
+  function addSubject(raw: string) {
+    const value = raw.trim().replace(/s+/g, " ")
+    if (!value) return
+    const known = [...mine, ...SUBJECTS].find((s) => s.toLowerCase() === value.toLowerCase())
+    if (!known) write<Subject[]>("subjects", NO_SUBJECTS, (all) => [...all, { id: crypto.randomUUID(), name: value, materials: [] }])
+    setSubject(known ?? value)
+    setNewSubject(null)
+    setSearch("")
   }
 
   const subjectButton = (value: string) => {
@@ -136,6 +150,38 @@ export default function NewExamPage() {
                 maxLength={40}
               />
             </div>
+            <Button variant="outline" className="w-full border-dashed" onClick={() => setNewSubject("")}>
+              <Plus /> Agregar materia
+            </Button>
+            <Dialog open={newSubject !== null} onOpenChange={(o) => !o && setNewSubject(null)}>
+              <DialogContent className="sm:max-w-sm">
+                <form
+                  className="contents"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    addSubject(newSubject ?? "")
+                  }}
+                >
+                  <DialogHeader>
+                    <DialogTitle>Agregar materia</DialogTitle>
+                    <DialogDescription>Se guarda en &ldquo;Agregadas por ti&rdquo; para tus próximos exámenes.</DialogDescription>
+                  </DialogHeader>
+                  <Input
+                    autoFocus
+                    value={newSubject ?? ""}
+                    onChange={(e) => setNewSubject(e.target.value)}
+                    placeholder="Por ejemplo: Geología"
+                    aria-label="Nombre de la materia"
+                    maxLength={40}
+                  />
+                  <DialogFooter>
+                    <Button type="submit" disabled={!newSubject?.trim()}>
+                      Agregar
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
             {q && !exists && (
               <Button
                 variant="secondary"

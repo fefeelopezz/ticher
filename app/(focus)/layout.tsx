@@ -1,5 +1,6 @@
 import { Suspense } from "react"
 import { EB_Garamond } from "next/font/google"
+import { FocusSkeleton } from "@/components/page-skeletons"
 
 // Serif for reading headings, like Astra's smart text.
 const serif = EB_Garamond({ subsets: ["latin"], variable: "--font-serif" })
@@ -8,7 +9,7 @@ const serif = EB_Garamond({ subsets: ["latin"], variable: "--font-serif" })
 export default function FocusLayout({ children }: LayoutProps<"/">) {
   return (
     <div className={`${serif.variable} flex min-h-svh flex-1 flex-col bg-background`}>
-      <Suspense>{children}</Suspense>
+      <Suspense fallback={<FocusSkeleton />}>{children}</Suspense>
     </div>
   )
 }

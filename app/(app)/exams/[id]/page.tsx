@@ -37,6 +37,7 @@ import {
   type Topic,
 } from "@/lib/store"
 import { same, usePrep } from "@/lib/use-prep"
+import { PrepSkeleton } from "@/components/page-skeletons"
 
 const SAVED_KINDS: Record<SavedLesson["kind"], { icon: LucideIcon; title: string }> = {
   quiz: { icon: ListChecks, title: "Opción múltiple" },
@@ -63,7 +64,7 @@ function SavedLessons({ items }: { items: SavedItem[] }) {
               <span className="min-w-0 flex-1 truncate">
                 {title} <span className="text-muted-foreground">· {detail}</span>
               </span>
-              {score !== undefined && <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{score}%</span>}
+              {score !== undefined && <span className="shrink-0 text-sm font-medium tabular-nums">{score}%</span>}
             </Link>
           </li>
         ))}
@@ -81,7 +82,7 @@ export default function PrepPage() {
   const [openTopic, setOpenTopic] = useState<string | null>(null)
   useStudyTimer()
 
-  if (!prep && !hydrated) return null
+  if (!prep && !hydrated) return <PrepSkeleton />
   if (!prep) {
     return (
       <div className="mx-auto max-w-md space-y-4 px-4 py-16 text-center">
@@ -257,7 +258,7 @@ export default function PrepPage() {
                         <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
                       </button>
                       {open && (
-                        <div id={`lessons-${t.id}`} className="space-y-3 px-3 pb-3 animate-in fade-in slide-in-from-top-1">
+                        <div id={`lessons-${t.id}`} className="space-y-3 px-3 pt-2 pb-3 animate-in fade-in slide-in-from-top-1">
                           <div className="grid gap-2 sm:grid-cols-2">
                             {[
                               { icon: FileText, title: "Texto inteligente", text: "Lectura paso a paso con preguntas rápidas.", href: summaryHref(t) },
@@ -285,7 +286,7 @@ export default function PrepPage() {
                           <SavedLessons
                             items={[
                               ...(isCurrentSummary(prep.summaries?.[t.id])
-                                ? [{ key: "summary", icon: FileText, title: "Texto inteligente", detail: "Lectura guardada", href: summaryHref(t) }]
+                                ? [{ key: "summary", icon: FileText, title: "Texto inteligente", detail: "Lectura guardada", href: summaryHref(t), score: prep.summaries?.[t.id]?.score }]
                                 : []),
                               ...(prep.savedLessons ?? [])
                                 .filter((l) => l.topicId === t.id)

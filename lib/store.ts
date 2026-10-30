@@ -48,7 +48,8 @@ export type SummarySection = {
   check?: Question
 }
 
-export type Summary = { title: string; intro: string; sections: SummarySection[]; finalQuiz: Question[] }
+// score: the share of checks and final questions answered right, set when the reading is finished.
+export type Summary = { title: string; intro: string; sections: SummarySection[]; finalQuiz: Question[]; score?: number }
 
 // Summaries saved before the step layout have no `body`; they are regenerated on open.
 export const isCurrentSummary = (s?: Summary): s is Summary =>
@@ -127,6 +128,8 @@ export type Profile = {
   name: string
   level: string
   socratic: boolean
+  // Small square JPEG as a data URL (see lib/avatar.ts); absent until the student picks one.
+  photo?: string
 }
 
 export type Material = {

@@ -7,6 +7,7 @@ import { useTheme } from "next-themes"
 import {
   BarChart3,
   CalendarDays,
+  ChevronsUpDown,
   GraduationCap,
   MessageCircle,
   Moon,
@@ -29,7 +30,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { postJson } from "@/lib/api"
 import { deleteFile } from "@/lib/files"
 import { DEFAULT_PROFILE, NO_CHATS, useStored, type Chat, type Profile } from "@/lib/store"
@@ -40,9 +42,12 @@ const NAV: NavItem[] = [
   { href: "/", label: "Preguntar", icon: MessageCircle },
   { href: "/exams", label: "Exámenes", icon: GraduationCap },
   { href: "/calendar", label: "Calendario", icon: CalendarDays },
-  { href: "/activity", label: "Mi actividad", icon: BarChart3 },
 ]
-const SETTINGS: NavItem[] = [{ href: "/settings", label: "Ajustes", icon: Settings }]
+// Personal pages open from the user menu at the bottom of the sidebar.
+const ACCOUNT: NavItem[] = [
+  { href: "/activity", label: "Mi actividad", icon: BarChart3 },
+  { href: "/settings", label: "Ajustes", icon: Settings },
+]
 
 function NavItems({ items, pathname }: { items: NavItem[]; pathname: string | null }) {
   return items.map(({ href, label, icon: Icon }) => (
@@ -109,7 +114,7 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1">
               <Nav items={NAV} />
             </SidebarMenu>
           </SidebarGroupContent>
@@ -118,7 +123,7 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupLabel>Conversaciones</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-1">
                 {[...chats]
                   .sort((a, b) => b.updatedAt - a.updatedAt)
                   .slice(0, 15)
@@ -138,7 +143,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu>
+        <SidebarMenu className="gap-1">
           <SidebarMenuItem>
             {/* Icons and label switch via the .dark class, so server and client markup match. */}
             <SidebarMenuButton onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
@@ -148,18 +153,30 @@ export function AppSidebar() {
               <span className="hidden dark:inline">Modo claro</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <Nav items={SETTINGS} />
           <SidebarMenuItem>
             <SidebarMenuButton onClick={logout}>
               <LogOut />
               <span>Cerrar sesión</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
-          <SidebarMenuItem className="flex items-center gap-2 px-2 py-2">
-            <Avatar className="size-7">
-              <AvatarFallback>{name[0].toUpperCase()}</AvatarFallback>
-            </Avatar>
-            <span className="truncate text-sm">{name}</span>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<SidebarMenuButton size="lg" aria-label="Menú de tu cuenta" />}>
+                <Avatar className="size-8">
+                  {profile.photo && <AvatarImage src={profile.photo} alt="" />}
+                  <AvatarFallback>{name[0].toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <span className="flex-1 truncate text-sm">{name}</span>
+                <ChevronsUpDown className="text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" className="min-w-48">
+                {ACCOUNT.map(({ href, label, icon: Icon }) => (
+                  <DropdownMenuItem key={href} onClick={() => router.push(href)}>
+                    <Icon /> {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

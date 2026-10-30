@@ -17,12 +17,14 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DatePicker } from "@/components/date-picker"
 import { SubjectSelect } from "@/components/subject-select"
-import { NO_EVENTS, daysUntil, today, useStored, type CalendarEvent } from "@/lib/store"
+import { NO_EVENTS, daysUntil, today, useHydrated, useStored, type CalendarEvent } from "@/lib/store"
+import { CalendarSkeleton } from "@/components/page-skeletons"
 
 const fmt = (date: string) =>
   new Date(date + "T00:00:00").toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" })
 
 export default function CalendarPage() {
+  const hydrated = useHydrated()
   const [events, setEvents] = useStored<CalendarEvent[]>("events", NO_EVENTS)
   const [open, setOpen] = useState(false)
   const [date, setDate] = useState(today)
@@ -42,6 +44,9 @@ export default function CalendarPage() {
     setOpen(false)
     setDate(today())
   }
+
+  // Before hydration the stored data is not read yet; show the page's shape instead of empty defaults.
+  if (!hydrated) return <CalendarSkeleton />
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8">

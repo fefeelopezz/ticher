@@ -9,6 +9,7 @@ import { QuestionCard, ScoreRing } from "@/components/question-card"
 import { cn } from "@/lib/utils"
 import { NO_LESSONS, isCurrentSummary, today, useStudyTimer, write, type Callout, type Summary } from "@/lib/store"
 import { usePrep } from "@/lib/use-prep"
+import { FocusSkeleton } from "@/components/page-skeletons"
 
 const CALLOUTS: Record<Callout["kind"], { icon: string; className: string }> = {
   definicion: { icon: "📖", className: "border-amber-500/40 bg-amber-500/[0.06]" },
@@ -112,18 +113,22 @@ export default function SummaryPage() {
     // The lesson's score counts the section checks and the final quiz, like Astra's attempt score.
     const answered = [...Object.values(checks), ...all]
     const accuracy = Math.round((answered.filter(Boolean).length / answered.length) * 100)
-    // Finishing the reading earns the topic its full 10%; the history keeps the real accuracy.
+    // Like a quiz, the reading earns a tenth of its accuracy: all right adds 10% to the topic.
     recordQuiz({
-      byTopic: { [topic.name]: 100 },
+      byTopic: { [topic.name]: accuracy },
       accuracy,
       seconds: Math.round((Date.now() - startedAt.current) / 1000),
       count: answered.length,
     })
-    update((p) => ({ ...p, topics: (p.topics ?? []).map((t) => (t.id === topic.id ? { ...t, lessons: t.lessons + 1 } : t)) }))
+    update((p) => ({
+      ...p,
+      topics: (p.topics ?? []).map((t) => (t.id === topic.id ? { ...t, lessons: t.lessons + 1 } : t)),
+      summaries: { ...p.summaries, [topic.id]: { ...p.summaries![topic.id], score: accuracy } },
+    }))
     write<string[]>("lessons", NO_LESSONS, (l) => [...l, today()])
   }
 
-  if (!hydrated) return null
+  if (!hydrated) return <FocusSkeleton />
 
   if (!prep || !topic) {
     return (

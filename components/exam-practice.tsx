@@ -16,19 +16,23 @@ type CardsProps = {
   title: string
   // Offered on the end screen, e.g. to replace the exam's saved deck.
   onNew?: () => void
+  // Called after the last card with the share (0-100) the student already knew.
+  onFinish?: (known: number) => void
   busy?: boolean
 }
 
-export function Flashcards({ cards, back, title, onNew, busy }: CardsProps) {
+export function Flashcards({ cards, back, title, onNew, onFinish, busy }: CardsProps) {
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [known, setKnown] = useState(0)
   const card = cards[index]
 
   function answer(knew: boolean) {
-    if (knew) setKnown(known + 1)
+    const total = known + (knew ? 1 : 0)
+    setKnown(total)
     setFlipped(false)
     setIndex(index + 1)
+    if (index === cards.length - 1) onFinish?.(Math.round((total / cards.length) * 100))
   }
 
   function restart() {

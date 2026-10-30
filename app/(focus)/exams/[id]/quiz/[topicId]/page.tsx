@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { DifficultyPicker, Quiz, TopicPicker } from "@/components/exam-practice"
 import { FocusShell, Missing, useLessonRoute } from "@/components/focus-shell"
 import { useStudyTimer, type Difficulty, type Question } from "@/lib/store"
+import { FocusSkeleton } from "@/components/page-skeletons"
 
 const QUIZ_SIZES = [5, 10, 15]
 
@@ -18,7 +19,7 @@ export default function QuizPage() {
   const [questions, setQuestions] = useState<Question[]>()
   useStudyTimer()
 
-  if (!hydrated) return null
+  if (!hydrated) return <FocusSkeleton />
   if (!found) return <Missing back={back} />
 
   const title = topic?.name ?? "Cuestionario"

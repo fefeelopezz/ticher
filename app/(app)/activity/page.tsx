@@ -15,9 +15,11 @@ import {
   isoDate,
   longestStreak,
   readiness,
+  useHydrated,
   useStored,
   type ExamPrep,
 } from "@/lib/store"
+import { ActivitySkeleton } from "@/components/page-skeletons"
 
 const daysAgo = (n: number) => {
   const d = new Date()
@@ -35,6 +37,7 @@ const shade = (min: number) =>
   min === 0 ? "bg-muted" : min < 15 ? "bg-primary/25" : min < 45 ? "bg-primary/50" : min < 90 ? "bg-primary/75" : "bg-primary"
 
 export default function ActivityPage() {
+  const hydrated = useHydrated()
   const [preps] = useStored<ExamPrep[]>("preps", NO_PREPS)
   const [lessons] = useStored<string[]>("lessons", NO_LESSONS)
   const [minutes] = useStored<Record<string, number>>("minutes", NO_MINUTES)
@@ -59,6 +62,9 @@ export default function ActivityPage() {
 
   const bySubject: Record<string, number[]> = {}
   for (const p of preps) (bySubject[p.subject] ??= []).push(readiness(p))
+
+  // Before hydration the stored data is not read yet; show the page's shape instead of empty defaults.
+  if (!hydrated) return <ActivitySkeleton />
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">

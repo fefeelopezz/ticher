@@ -5,7 +5,8 @@ import { ArrowRight, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { GoalBar } from "@/components/goal-bar"
-import { DEFAULT_GOAL, NO_PREPS, daysUntil, readiness, useStored, type ExamPrep } from "@/lib/store"
+import { DEFAULT_GOAL, NO_PREPS, daysUntil, readiness, useHydrated, useStored, type ExamPrep } from "@/lib/store"
+import { ExamsSkeleton } from "@/components/page-skeletons"
 
 const fmt = (date: string) =>
   new Date(date + "T00:00:00").toLocaleDateString("es", { weekday: "short", day: "numeric", month: "short" })
@@ -40,10 +41,14 @@ function PrepRow({ p }: { p: ExamPrep }) {
 }
 
 export default function ExamsPage() {
+  const hydrated = useHydrated()
   const [preps] = useStored<ExamPrep[]>("preps", NO_PREPS)
   const upcoming = preps.filter((p) => daysUntil(p.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))
   const past = preps.filter((p) => daysUntil(p.date) < 0).sort((a, b) => b.date.localeCompare(a.date))
   const [next, ...later] = upcoming
+
+  // Before hydration the stored data is not read yet; show the page's shape instead of empty defaults.
+  if (!hydrated) return <ExamsSkeleton />
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8">
