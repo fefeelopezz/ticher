@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
+import { DatePicker } from "@/components/date-picker"
 import { FileDrop, formatSize, storeFiles } from "@/components/subjects-section"
 import {
   DEFAULT_GOAL,
@@ -196,7 +197,7 @@ export default function NewExamPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="exam-date">O elige la fecha</Label>
-              <Input id="exam-date" type="date" min={inDays(0)} value={date} onChange={(e) => setDate(e.target.value)} />
+              <DatePicker id="exam-date" value={date} onChange={setDate} min={inDays(0)} placeholder="Elige el día del examen" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="exam-name">Nombre del examen (opcional)</Label>

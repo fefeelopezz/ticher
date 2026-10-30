@@ -3,8 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, BookOpen, FileText, Layers, ListChecks, PenLine, Plus, Sparkles, Trash2 } from "lucide-react"
-import { toast } from "sonner"
+import { ArrowLeft, BookOpen, ChevronRight, FileText, Layers, ListChecks, PenLine, Plus, Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -14,12 +13,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { DifficultyPicker, Flashcards, Quiz, TopicPicker, formatTime } from "@/components/exam-practice"
 import { MockExam, type Graded } from "@/components/mock-exam"
 import { GoalBar } from "@/components/goal-bar"
+import { ExamMaterials } from "@/components/subjects-section"
 import {
   DEFAULT_GOAL,
   NO_EVENTS,
-  NO_LESSONS,
   average,
-  bump,
   daysUntil,
   forecast,
   readiness,
@@ -46,7 +44,10 @@ export default function PrepPage() {
   const [cardsOpen, setCardsOpen] = useState(false)
   const [quiz, setQuiz] = useState<{ key: number; title: string; questions: Question[] } | null>(null)
   const [quizSetup, setQuizSetup] = useState<{ topics: string[]; count: number; difficulty: Difficulty } | null>(null)
-  const [mock, setMock] = useState<{ key: number; review?: MockAttempt } | null>(null)
+  const [mock, setMock] = useState<{ key: number; review?: MockAttempt; topics?: string[] } | null>(null)
+  const [lessonFor, setLessonFor] = useState<Topic | null>(null)
+  // A topic's flashcards are a one-off deck; the exam's saved deck stays untouched.
+  const [deck, setDeck] = useState<StudyCard[] | null>(null)
   useStudyTimer()
 
   if (!prep && !hydrated) return null
@@ -77,19 +78,6 @@ export default function PrepPage() {
   const quizzes = prep.quizzes ?? []
   const summaryHref = (topic: Topic) => `/exams/${id}/summary/${topic.id}`
 
-  const adjustTopics = (fn: (t: Topic) => Topic) => update((p) => ({ ...p, topics: (p.topics ?? []).map(fn) }))
-
-  function completeLesson(topic?: Topic) {
-    write<string[]>("lessons", NO_LESSONS, (l) => [...l, today()])
-    if (topic) {
-      adjustTopics((t) => (t.id === topic.id ? { ...t, mastery: bump(t.mastery, 10), lessons: t.lessons + 1 } : t))
-      toast.success(`¡+10% en ${topic.name}!`)
-    } else {
-      update((p) => ({ ...p, mastery: bump(p.mastery, 10) }))
-      toast.success("¡+10%!")
-    }
-  }
-
   function addTopics(names: string[]) {
     update((p) => {
       const current = p.topics ?? []
@@ -108,6 +96,13 @@ export default function PrepPage() {
     const res = await generate<{ cards: StudyCard[] }>("flashcards")
     if (!res?.cards.length) return
     update((p) => ({ ...p, cards: res.cards }))
+    setCardsOpen(true)
+  }
+
+  async function topicCards(topic: Topic) {
+    const res = await generate<{ cards: StudyCard[] }>("flashcards", { topics: [topic.name] }, `cards:${topic.id}`)
+    if (!res?.cards.length) return
+    setDeck(res.cards)
     setCardsOpen(true)
   }
 
@@ -179,6 +174,7 @@ export default function PrepPage() {
         <TabsList>
           <TabsTrigger value="path">Ruta de estudio</TabsTrigger>
           <TabsTrigger value="progress">Progreso</TabsTrigger>
+          <TabsTrigger value="files">Archivos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="path" className="space-y-4 pt-2">
@@ -189,15 +185,12 @@ export default function PrepPage() {
                 <CardDescription>
                   {materials.length
                     ? `Ticher puede leer tus ${materials.length} archivos de ${prep.subject} y dividir el examen en temas.`
-                    : "Sin material, Ticher usará el temario típico de la materia. Puedes subir apuntes en Exámenes → Mis materias."}
+                    : "Sin material, Ticher usará el temario típico de la materia. Puedes subir apuntes en la pestaña Archivos."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Button onClick={generateTopics} disabled={busy !== null}>
                   <Sparkles /> {busy === "topics" ? "Generando temas…" : "Generar temas con IA"}
-                </Button>
-                <Button variant="ghost" onClick={() => completeLesson()}>
-                  Completé una lección (+10%)
                 </Button>
               </CardContent>
             </Card>
@@ -216,54 +209,28 @@ export default function PrepPage() {
                     <Button nativeButton={false} render={<Link href={lessonHref(next.name)} />}>
                       <BookOpen /> Lección con el tutor
                     </Button>
-                    <Button variant="ghost" onClick={() => completeLesson(next)}>
-                      Completé la lección
-                    </Button>
                   </CardContent>
                 </Card>
               )}
 
               <ol className="space-y-2">
                 {topics.map((t, i) => (
-                  <li key={t.id} className="flex items-center gap-3 rounded-lg border p-3">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs">{i + 1}</span>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex justify-between gap-2 text-sm">
-                        <span className="truncate font-medium">{t.name}</span>
-                        <span className="shrink-0 text-muted-foreground">{t.mastery}%</span>
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      className="group flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                      onClick={() => setLessonFor(t)}
+                    >
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs">{i + 1}</span>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex justify-between gap-2 text-sm">
+                          <span className="truncate font-medium">{t.name}</span>
+                          <span className="shrink-0 text-muted-foreground">{t.mastery}%</span>
+                        </div>
+                        <GoalBar value={t.mastery} goal={goal} className="h-1.5" />
                       </div>
-                      <GoalBar value={t.mastery} goal={goal} className="h-1.5" />
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Resumen de ${t.name}`}
-                      title="Resumen"
-                      nativeButton={false}
-                      render={<Link href={summaryHref(t)} />}
-                    >
-                      <FileText />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Cuestionario de ${t.name}`}
-                      title="Cuestionario"
-                      disabled={busy !== null}
-                      onClick={() => startQuiz(`Cuestionario: ${t.name}`, [t.name], 5, "medio", `quiz:${t.id}`)}
-                    >
-                      <ListChecks className={busy === `quiz:${t.id}` ? "animate-pulse" : ""} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Lección de ${t.name}`}
-                      title="Lección con el tutor"
-                      nativeButton={false}
-                      render={<Link href={lessonHref(t.name)} />}
-                    >
-                      <BookOpen />
-                    </Button>
+                      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                    </button>
                   </li>
                 ))}
               </ol>
@@ -440,13 +407,88 @@ export default function PrepPage() {
             </Card>
           )}
         </TabsContent>
+
+        <TabsContent value="files" className="pt-2">
+          <ExamMaterials subject={prep.subject} />
+        </TabsContent>
       </Tabs>
 
+      {lessonFor && (
+        <Dialog open onOpenChange={(o) => !o && setLessonFor(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>{lessonFor.name}</DialogTitle>
+              <DialogDescription>¿Cómo quieres estudiar este tema?</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-2">
+              {[
+                { icon: FileText, title: "Texto inteligente", text: "Lectura paso a paso con preguntas rápidas.", href: summaryHref(lessonFor) },
+                {
+                  icon: ListChecks,
+                  title: "Opción múltiple",
+                  text: "Cuestionario con explicación de cada respuesta.",
+                  run: () => setQuizSetup({ topics: [lessonFor.name], count: 10, difficulty: "medio" }),
+                },
+                {
+                  icon: Layers,
+                  title: "Tarjetas de repaso",
+                  text: "Conceptos clave de este tema, uno por tarjeta.",
+                  busy: busy === `cards:${lessonFor.id}`,
+                  run: () => topicCards(lessonFor),
+                },
+                {
+                  icon: PenLine,
+                  title: "Examen escrito",
+                  text: "Responde por escrito y recibe una calificación.",
+                  run: () => setMock((prev) => ({ key: (prev?.key ?? 0) + 1, topics: [lessonFor.name] })),
+                },
+                { icon: BookOpen, title: "Lección con el tutor", text: "El tutor te explica y te pregunta en el chat.", href: lessonHref(lessonFor.name) },
+              ].map(({ icon: Icon, title, text, href, run, busy: loading }) => {
+                const content = (
+                  <>
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                      <Icon className={`size-4 ${loading ? "animate-pulse" : ""}`} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium">{loading ? "Creando…" : title}</span>
+                      <span className="block text-xs text-muted-foreground">{text}</span>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  </>
+                )
+                const cls =
+                  "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
+                return href ? (
+                  <Link key={title} href={href} className={cls}>
+                    {content}
+                  </Link>
+                ) : (
+                  <button
+                    key={title}
+                    type="button"
+                    className={cls}
+                    disabled={busy !== null}
+                    onClick={async () => {
+                      await run?.()
+                      setLessonFor(null)
+                    }}
+                  >
+                    {content}
+                  </button>
+                )
+              })}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <Flashcards
-        cards={prep.cards ?? []}
+        cards={deck ?? prep.cards ?? []}
         open={cardsOpen}
-        onOpenChange={setCardsOpen}
-        onResult={(topic, knew) => knew && adjustTopics((t) => (same(t.name, topic) ? { ...t, mastery: bump(t.mastery, 3) } : t))}
+        onOpenChange={(o) => {
+          setCardsOpen(o)
+          if (!o) setDeck(null)
+        }}
       />
 
       {quizSetup && (
@@ -503,7 +545,7 @@ export default function PrepPage() {
       {mock && (
         <MockExam
           key={mock.key}
-          topics={topicNames}
+          topics={mock.topics ?? topicNames}
           review={mock.review}
           create={async (chosen, count, difficulty) =>
             (await generate<{ tasks: MockTask[] }>("mock", { topics: chosen, count, difficulty }))?.tasks

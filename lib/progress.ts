@@ -42,8 +42,8 @@ export function withSnapshot(history: Point[] = [], mastery: number, date = toda
 
 export const bump = (mastery: number, by: number) => clamp(mastery + by)
 
-// A quiz score pulls mastery halfway toward the result, so one test doesn't erase prior work.
-export const blend = (mastery: number, score: number) => clamp(Math.round((mastery + score) / 2))
+// A 0-100 score earns 0-10 points: a perfect quiz, exam or finished summary adds 10%.
+export const earn = (mastery: number, score: number) => bump(mastery, Math.round(Math.min(100, Math.max(0, score)) / 10))
 
 export function longestStreak(dates: string[]) {
   const days = [...new Set(dates)].sort()

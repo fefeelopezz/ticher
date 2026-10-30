@@ -1,24 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { FileText, Plus, Trash2, Upload } from "lucide-react"
+import { FileText, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { deleteFile, getFile, mdKey, saveFile } from "@/lib/files"
 import { convertPdf } from "@/lib/pdf"
-import { NO_SUBJECTS, SUBJECTS, useStored, type Material, type Subject } from "@/lib/store"
+import { NO_SUBJECTS, useStored, type Material, type Subject } from "@/lib/store"
+import { same } from "@/lib/use-prep"
 
 const ACCEPT = ".pdf,.doc,.docx,.ppt,.pptx,.txt,.md,image/*"
 const MAX_MB = 25
@@ -117,199 +107,90 @@ export function FileDrop({ onFiles, compact }: { onFiles: (files: File[]) => voi
   )
 }
 
-export function SubjectsSection() {
+// Files belong to the subject, so every exam of the same subject shares them.
+export function ExamMaterials({ subject }: { subject: string }) {
   const [subjects, setSubjects] = useStored<Subject[]>("subjects", NO_SUBJECTS)
-  const [open, setOpen] = useState(false)
-  const [pending, setPending] = useState<File[]>([])
-  const [saving, setSaving] = useState(false)
   const [converting, setConverting] = useState<string | null>(null)
-
-  async function create(form: FormData) {
-    const name = String(form.get("name")).trim()
-    if (!name) return
-    setSaving(true)
-    const materials = await storeFiles(pending)
-    const same = (s: Subject) => s.name.toLowerCase() === name.toLowerCase()
-    const existing = subjects.find(same)
-    setSubjects((all) =>
-      all.some(same)
-        ? all.map((s) => (same(s) ? { ...s, materials: [...s.materials, ...materials] } : s))
-        : [...all, { id: crypto.randomUUID(), name, materials }]
-    )
-    setSaving(false)
-    setPending([])
-    setOpen(false)
-    toast.success(existing ? `Material agregado a ${existing.name}` : "Materia agregada")
-  }
+  const materials = subjects.find((s) => same(s.name, subject))?.materials ?? []
 
   // Updaters read the latest list: converting PDFs takes seconds and the student may change things meanwhile.
-  const updateMaterials = (subjectId: string, fn: (ms: Material[]) => Material[]) =>
-    setSubjects((all) => all.map((s) => (s.id === subjectId ? { ...s, materials: fn(s.materials) } : s)))
+  const updateMaterials = (fn: (ms: Material[]) => Material[]) =>
+    setSubjects((all) =>
+      all.some((s) => same(s.name, subject))
+        ? all.map((s) => (same(s.name, subject) ? { ...s, materials: fn(s.materials) } : s))
+        : [...all, { id: crypto.randomUUID(), name: subject, materials: fn([]) }]
+    )
 
-  async function addMaterials(subject: Subject, files: File[]) {
-    const materials = await storeFiles(files)
-    if (materials.length) updateMaterials(subject.id, (ms) => [...ms, ...materials])
+  async function addMaterials(files: File[]) {
+    const stored = await storeFiles(files)
+    if (stored.length) updateMaterials((ms) => [...ms, ...stored])
   }
 
   // PDFs uploaded before conversion existed get a one-click conversion.
-  async function convertExisting(subject: Subject, m: Material) {
+  async function convertExisting(m: Material) {
     setConverting(m.id)
     const blob = await getFile(m.id).catch(() => undefined)
     const markdown = blob ? await toMarkdown(m.id, blob, m.name) : undefined
     setConverting(null)
-    if (markdown !== undefined) updateMaterials(subject.id, (ms) => ms.map((x) => (x.id === m.id ? { ...x, markdown } : x)))
+    if (markdown !== undefined) updateMaterials((ms) => ms.map((x) => (x.id === m.id ? { ...x, markdown } : x)))
   }
 
-  function removeMaterial(subject: Subject, m: Material) {
+  function removeMaterial(m: Material) {
     deleteFile(m.id).catch(() => {})
-    updateMaterials(subject.id, (ms) => ms.filter((x) => x.id !== m.id))
-  }
-
-  function removeSubject(subject: Subject) {
-    subject.materials.forEach((m) => deleteFile(m.id).catch(() => {}))
-    setSubjects((all) => all.filter((s) => s.id !== subject.id))
+    updateMaterials((ms) => ms.filter((x) => x.id !== m.id))
   }
 
   return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-muted-foreground">Mis materias</h2>
-        <Dialog
-          open={open}
-          onOpenChange={(o) => {
-            setOpen(o)
-            if (!o) setPending([])
-          }}
-        >
-          <DialogTrigger render={<Button variant="outline" size="sm" />}>
-            <Plus /> Agregar materias
-          </DialogTrigger>
-          <DialogContent>
-            <form action={create} className="space-y-4">
-              <DialogHeader>
-                <DialogTitle>Agregar materia</DialogTitle>
-                <DialogDescription>Sube el material con el que vas a estudiar para el examen.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-2">
-                <Label htmlFor="subject-name">Materia</Label>
-                <Input
-                  id="subject-name"
-                  name="name"
-                  list="subject-suggestions"
-                  placeholder="Ej. Física"
-                  required
-                  maxLength={40}
-                />
-                <datalist id="subject-suggestions">
-                  {SUBJECTS.map((s) => (
-                    <option key={s} value={s} />
-                  ))}
-                </datalist>
-              </div>
-              <div className="space-y-2">
-                <Label>Material de estudio</Label>
-                <FileDrop onFiles={(files) => setPending([...pending, ...files])} />
-                {pending.length > 0 && (
-                  <ul className="space-y-1 text-sm">
-                    {pending.map((f, i) => (
-                      <li key={i} className="flex items-center gap-2">
-                        <FileText className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{f.name}</span>
-                        <span className="ml-auto shrink-0 text-xs text-muted-foreground">{formatSize(f.size)}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          aria-label={`Quitar ${f.name}`}
-                          onClick={() => setPending(pending.filter((_, j) => j !== i))}
-                        >
-                          <Trash2 />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <DialogFooter>
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Guardando…" : "Guardar materia"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {subjects.length === 0 ? (
-        <p className="rounded-xl border border-dashed py-8 text-center text-sm text-muted-foreground">
-          Agrega tus materias y sube PDFs o apuntes para estudiar.
-        </p>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {subjects.map((s) => (
-            <Card key={s.id} size="sm">
-              <CardHeader>
-                <CardTitle>{s.name}</CardTitle>
-                <CardDescription>
-                  {s.materials.length === 1 ? "1 archivo" : `${s.materials.length} archivos`}
-                </CardDescription>
-                <CardAction>
-                  <Button variant="ghost" size="icon-sm" aria-label={`Eliminar ${s.name}`} onClick={() => removeSubject(s)}>
-                    <Trash2 />
-                  </Button>
-                </CardAction>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {s.materials.map((m) => (
-                  <div key={m.id} className="flex items-center gap-2 text-sm">
-                    <FileText className="size-4 shrink-0 text-muted-foreground" />
-                    <button type="button" className="truncate text-left hover:underline" onClick={() => openMaterial(m)}>
-                      {m.name}
-                    </button>
-                    {(m.markdown ?? 0) > 0 && (
-                      <button
-                        type="button"
-                        title={`Ver versión Markdown (${m.markdown!.toLocaleString("es")} caracteres)`}
-                        aria-label={`Ver ${m.name} en Markdown`}
-                        className="shrink-0 rounded bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground"
-                        onClick={() => openMaterial(m, true)}
-                      >
-                        MD
-                      </button>
-                    )}
-                    {m.markdown === 0 && (
-                      <span className="shrink-0 text-[10px] text-muted-foreground" title="PDF escaneado: la IA lee el PDF original">
-                        sin texto
-                      </span>
-                    )}
-                    {isPdf(m) && m.markdown === undefined && (
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        className="shrink-0"
-                        disabled={converting !== null}
-                        onClick={() => convertExisting(s, m)}
-                      >
-                        {converting === m.id ? "Convirtiendo…" : "Convertir a MD"}
-                      </Button>
-                    )}
-                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">{formatSize(m.size)}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      aria-label={`Eliminar ${m.name}`}
-                      onClick={() => removeMaterial(s, m)}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ))}
-                <FileDrop compact onFiles={(files) => addMaterials(s, files)} />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-    </section>
+    <Card>
+      <CardHeader>
+        <CardTitle>Material de estudio</CardTitle>
+        <CardDescription>
+          {materials.length === 1 ? "1 archivo" : `${materials.length} archivos`} de {subject} · se comparten con tus otros
+          exámenes de esta materia
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {materials.map((m) => (
+          <div key={m.id} className="flex items-center gap-2 text-sm">
+            <FileText className="size-4 shrink-0 text-muted-foreground" />
+            <button type="button" className="truncate text-left hover:underline" onClick={() => openMaterial(m)}>
+              {m.name}
+            </button>
+            {(m.markdown ?? 0) > 0 && (
+              <button
+                type="button"
+                title={`Ver versión Markdown (${m.markdown!.toLocaleString("es")} caracteres)`}
+                aria-label={`Ver ${m.name} en Markdown`}
+                className="shrink-0 rounded bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground"
+                onClick={() => openMaterial(m, true)}
+              >
+                MD
+              </button>
+            )}
+            {m.markdown === 0 && (
+              <span className="shrink-0 text-[10px] text-muted-foreground" title="PDF escaneado: la IA lee el PDF original">
+                sin texto
+              </span>
+            )}
+            {isPdf(m) && m.markdown === undefined && (
+              <Button
+                variant="outline"
+                size="xs"
+                className="shrink-0"
+                disabled={converting !== null}
+                onClick={() => convertExisting(m)}
+              >
+                {converting === m.id ? "Convirtiendo…" : "Convertir a MD"}
+              </Button>
+            )}
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground">{formatSize(m.size)}</span>
+            <Button variant="ghost" size="icon-xs" aria-label={`Eliminar ${m.name}`} onClick={() => removeMaterial(m)}>
+              <Trash2 />
+            </Button>
+          </div>
+        ))}
+        <FileDrop compact={materials.length > 0} onFiles={addMaterials} />
+      </CardContent>
+    </Card>
   )
 }

@@ -22,7 +22,7 @@ y los exámenes de práctica muestran "Configura GEMINI_API_KEY…".
 5. **Prueba**:
    - *Preguntar*: escribe una duda o sube la foto de un ejercicio.
    - *Exámenes → tu preparación → Generar temas con IA*, luego *Crear tarjetas* y *Crear examen de práctica*.
-   - Si subiste PDFs en *Mis materias*, el tutor los usa como fuente (botón "Usar material de …" en el chat).
+   - Si subiste PDFs en la pestaña *Archivos* de un examen, el tutor los usa como fuente (botón "Usar material de …" en el chat).
 6. **Al publicar** (p. ej. en Vercel): agrega `GEMINI_API_KEY` (y `GEMINI_MODEL` si lo usas) en
    *Project → Settings → Environment Variables*. La clave vive solo en el servidor; el navegador nunca la ve.
 

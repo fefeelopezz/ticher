@@ -112,8 +112,9 @@ export default function SummaryPage() {
     // The lesson's score counts the section checks and the final quiz, like Astra's attempt score.
     const answered = [...Object.values(checks), ...all]
     const accuracy = Math.round((answered.filter(Boolean).length / answered.length) * 100)
+    // Finishing the reading earns the topic its full 10%; the history keeps the real accuracy.
     recordQuiz({
-      byTopic: { [topic.name]: accuracy },
+      byTopic: { [topic.name]: 100 },
       accuracy,
       seconds: Math.round((Date.now() - startedAt.current) / 1000),
       count: answered.length,

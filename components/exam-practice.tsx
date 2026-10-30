@@ -13,7 +13,7 @@ type CardsProps = {
   cards: Card[]
   open: boolean
   onOpenChange: (open: boolean) => void
-  onResult: (topic: string, knew: boolean) => void
+  onResult?: (topic: string, knew: boolean) => void
 }
 
 export function Flashcards({ cards, open, onOpenChange, onResult }: CardsProps) {
@@ -23,7 +23,7 @@ export function Flashcards({ cards, open, onOpenChange, onResult }: CardsProps) 
   const card = cards[index]
 
   function answer(knew: boolean) {
-    onResult(card.topic, knew)
+    onResult?.(card.topic, knew)
     if (knew) setKnown(known + 1)
     setFlipped(false)
     setIndex(index + 1)

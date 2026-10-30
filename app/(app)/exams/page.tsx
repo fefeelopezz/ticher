@@ -5,7 +5,6 @@ import { ArrowRight, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { GoalBar } from "@/components/goal-bar"
-import { SubjectsSection } from "@/components/subjects-section"
 import { DEFAULT_GOAL, NO_PREPS, daysUntil, readiness, useStored, type ExamPrep } from "@/lib/store"
 
 const fmt = (date: string) =>
@@ -104,8 +103,6 @@ export default function ExamsPage() {
           </div>
         </section>
       )}
-
-      <SubjectsSection />
 
       {past.length > 0 && (
         <section className="space-y-3">

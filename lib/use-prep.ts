@@ -7,7 +7,7 @@ import { toPayload } from "./files"
 import {
   NO_PREPS,
   NO_SUBJECTS,
-  blend,
+  earn,
   readiness,
   today,
   useHydrated,
@@ -25,14 +25,14 @@ type Options = { topics?: string[]; count?: number; difficulty?: Difficulty; tas
 
 export const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
 
-// Moves each topic toward its score; without topics the prep's own score moves instead.
+// Each scored topic earns points; without topics the prep's own score earns them instead.
 export function applyScores(p: ExamPrep, byTopic: Record<string, number>, overall: number): ExamPrep {
-  if (!p.topics?.length) return { ...p, mastery: blend(p.mastery, overall) }
+  if (!p.topics?.length) return { ...p, mastery: earn(p.mastery, overall) }
   return {
     ...p,
     topics: p.topics.map((t) => {
       const hit = Object.entries(byTopic).find(([name]) => same(name, t.name))
-      return hit ? { ...t, mastery: blend(t.mastery, hit[1]) } : t
+      return hit ? { ...t, mastery: earn(t.mastery, hit[1]) } : t
     }),
   }
 }

@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { DatePicker } from "@/components/date-picker"
 import { SubjectSelect } from "@/components/subject-select"
 import { NO_EVENTS, daysUntil, today, useStored, type CalendarEvent } from "@/lib/store"
 
@@ -24,6 +25,7 @@ const fmt = (date: string) =>
 export default function CalendarPage() {
   const [events, setEvents] = useStored<CalendarEvent[]>("events", NO_EVENTS)
   const [open, setOpen] = useState(false)
+  const [date, setDate] = useState(today)
   const upcoming = events.filter((e) => daysUntil(e.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))
 
   function add(form: FormData) {
@@ -38,6 +40,7 @@ export default function CalendarPage() {
       },
     ])
     setOpen(false)
+    setDate(today())
   }
 
   return (
@@ -60,7 +63,7 @@ export default function CalendarPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label htmlFor="date">Fecha</Label>
-                  <Input id="date" name="date" type="date" defaultValue={today()} required />
+                  <DatePicker id="date" name="date" value={date} onChange={setDate} />
                 </div>
                 <div className="space-y-2">
                   <Label>Materia</Label>

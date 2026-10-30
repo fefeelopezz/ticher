@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { postJson } from "@/lib/api"
 import { DEFAULT_PROFILE, adoptLegacyData, readStored, write, type Profile } from "@/lib/store"
 
@@ -14,6 +15,8 @@ const RESEND_SECONDS = 30
 
 export default function LoginPage() {
   const router = useRouter()
+  // Same email-code flow for both: there's no account database, so sign-up just collects the name up front.
+  const [mode, setMode] = useState<"login" | "register">("login")
   const [step, setStep] = useState<"email" | "code" | "name">("email")
   const [email, setEmail] = useState("")
   const [code, setCode] = useState("")
@@ -46,6 +49,10 @@ export default function LoginPage() {
     try {
       await postJson("/api/auth/verify", { code: value })
       adoptLegacyData()
+      if (mode === "register" && name.trim()) {
+        write<Profile>("profile", DEFAULT_PROFILE, (p) => ({ ...p, name: name.trim() }))
+        return finish()
+      }
       // First sign-in on this browser: ask for a name to greet them with.
       if (readStored<Profile>("profile", DEFAULT_PROFILE).name.trim()) finish()
       else setStep("name")
@@ -71,8 +78,10 @@ export default function LoginPage() {
           </p>
           {step === "email" && (
             <>
-              <h1 className="text-lg font-medium">Iniciar sesión</h1>
-              <p className="text-sm text-muted-foreground">Inicia sesión o crea una nueva cuenta. Es gratis.</p>
+              <h1 className="text-lg font-medium">{mode === "login" ? "Bienvenido de nuevo" : "Crea tu cuenta"}</h1>
+              <p className="text-sm text-muted-foreground">
+                {mode === "login" ? "Entra con tu correo para seguir estudiando." : "Es gratis y sin contraseña. Solo necesitas tu correo."}
+              </p>
             </>
           )}
           {step === "code" && (
@@ -92,34 +101,63 @@ export default function LoginPage() {
         </div>
 
         {step === "email" && (
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault()
-              sendCode()
-            }}
-          >
-            <Label htmlFor="email" className="sr-only">
-              Correo electrónico
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              required
-              autoFocus
-              autoComplete="email"
-              placeholder="Ingresa tu correo electrónico"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="h-11"
-            />
-            <Button type="submit" size="lg" className="h-11 w-full" disabled={busy}>
-              <Mail /> {busy ? "Enviando…" : "Continuar con correo electrónico"}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Te enviaremos un código para entrar sin contraseña.
-            </p>
-          </form>
+          <div className="space-y-5">
+            <Tabs value={mode} onValueChange={(v) => setMode(v as "login" | "register")}>
+              <TabsList className="w-full">
+                <TabsTrigger value="login" className="flex-1">
+                  Iniciar sesión
+                </TabsTrigger>
+                <TabsTrigger value="register" className="flex-1">
+                  Registrarse
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <form
+              key={mode}
+              className="space-y-3 animate-in fade-in duration-300"
+              onSubmit={(e) => {
+                e.preventDefault()
+                sendCode()
+              }}
+            >
+              {mode === "register" && (
+                <>
+                  <Label htmlFor="register-name" className="sr-only">
+                    Tu nombre
+                  </Label>
+                  <Input
+                    id="register-name"
+                    required
+                    autoFocus
+                    autoComplete="given-name"
+                    maxLength={40}
+                    placeholder="Tu nombre"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="h-11"
+                  />
+                </>
+              )}
+              <Label htmlFor="email" className="sr-only">
+                Correo electrónico
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                required
+                autoFocus={mode === "login"}
+                autoComplete="email"
+                placeholder="Ingresa tu correo electrónico"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11"
+              />
+              <Button type="submit" size="lg" className="h-11 w-full" disabled={busy}>
+                <Mail /> {busy ? "Enviando…" : mode === "login" ? "Iniciar sesión" : "Crear cuenta"}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">Te enviaremos un código de 6 dígitos para entrar sin contraseña.</p>
+            </form>
+          </div>
         )}
 
         {step === "code" && (
