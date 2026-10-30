@@ -3,15 +3,22 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, BookOpen, ChevronRight, FileText, Layers, ListChecks, PenLine, Plus, Sparkles, Trash2 } from "lucide-react"
+import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Layers, ListChecks, PenLine, Plus, Sparkles, Trash2, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { DifficultyPicker, Flashcards, Quiz, TopicPicker, formatTime } from "@/components/exam-practice"
-import { MockExam, type Graded } from "@/components/mock-exam"
+import { formatTime } from "@/components/exam-practice"
 import { GoalBar } from "@/components/goal-bar"
 import { ExamMaterials } from "@/components/subjects-section"
 import {
@@ -20,34 +27,58 @@ import {
   average,
   daysUntil,
   forecast,
+  isCurrentSummary,
   readiness,
   today,
   useStudyTimer,
   write,
-  type Card as StudyCard,
   type CalendarEvent,
-  type Difficulty,
-  type MockAttempt,
-  type MockTask,
-  type Question,
+  type SavedLesson,
   type Topic,
 } from "@/lib/store"
-import { applyScores, same, usePrep } from "@/lib/use-prep"
+import { same, usePrep } from "@/lib/use-prep"
 
-const QUIZ_SIZES = [5, 10, 15]
+const SAVED_KINDS: Record<SavedLesson["kind"], { icon: LucideIcon; title: string }> = {
+  quiz: { icon: ListChecks, title: "Opción múltiple" },
+  cards: { icon: Layers, title: "Tarjetas de repaso" },
+  written: { icon: PenLine, title: "Examen escrito" },
+}
+
+const savedSize = (l: SavedLesson) =>
+  l.kind === "quiz" ? `${l.questions.length} preguntas` : l.kind === "cards" ? `${l.cards.length} tarjetas` : `${l.attempt.tasks.length} tareas`
+
+type SavedItem = { key: string; icon: LucideIcon; title: string; detail: string; href: string; score?: number }
+
+// The lessons already created for a topic, listed under its options so they can be reopened.
+function SavedLessons({ items }: { items: SavedItem[] }) {
+  if (!items.length) return null
+  return (
+    <div className="space-y-1.5 border-t pt-3">
+      <p className="text-xs font-medium text-muted-foreground">Tus lecciones</p>
+      <ul className="space-y-1">
+        {items.map(({ key, icon: Icon, title, detail, href, score }) => (
+          <li key={key}>
+            <Link href={href} className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/60">
+              <Icon className="size-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate">
+                {title} <span className="text-muted-foreground">· {detail}</span>
+              </span>
+              {score !== undefined && <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{score}%</span>}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
 
 export default function PrepPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { prep, hydrated, materials, busy, setPreps, update, generate, recordQuiz } = usePrep(id)
+  const { prep, hydrated, materials, busy, setPreps, update, generate } = usePrep(id)
   const [newTopic, setNewTopic] = useState("")
-  const [cardsOpen, setCardsOpen] = useState(false)
-  const [quiz, setQuiz] = useState<{ key: number; title: string; questions: Question[] } | null>(null)
-  const [quizSetup, setQuizSetup] = useState<{ topics: string[]; count: number; difficulty: Difficulty } | null>(null)
-  const [mock, setMock] = useState<{ key: number; review?: MockAttempt; topics?: string[] } | null>(null)
-  const [lessonFor, setLessonFor] = useState<Topic | null>(null)
-  // A topic's flashcards are a one-off deck; the exam's saved deck stays untouched.
-  const [deck, setDeck] = useState<StudyCard[] | null>(null)
+  // The topic whose lesson options are unfolded below its row.
+  const [openTopic, setOpenTopic] = useState<string | null>(null)
   useStudyTimer()
 
   if (!prep && !hydrated) return null
@@ -64,8 +95,6 @@ export default function PrepPage() {
 
   const goal = prep.goal ?? DEFAULT_GOAL
   const topics = prep.topics ?? []
-  // Quizzes and mock exams need topics; before they exist the whole subject counts as one.
-  const topicNames = topics.length ? topics.map((t) => t.name) : [prep.subject]
   const score = readiness(prep)
   const days = daysUntil(prep.date)
   const projected = forecast(score, prep.history ?? [], prep.date)
@@ -91,37 +120,10 @@ export default function PrepPage() {
     if (res) addTopics(res.topics)
   }
 
-  async function openCards(regenerate = false) {
-    if (prep!.cards?.length && !regenerate) return setCardsOpen(true)
-    const res = await generate<{ cards: StudyCard[] }>("flashcards")
-    if (!res?.cards.length) return
-    update((p) => ({ ...p, cards: res.cards }))
-    setCardsOpen(true)
-  }
-
-  async function topicCards(topic: Topic) {
-    const res = await generate<{ cards: StudyCard[] }>("flashcards", { topics: [topic.name] }, `cards:${topic.id}`)
-    if (!res?.cards.length) return
-    setDeck(res.cards)
-    setCardsOpen(true)
-  }
-
-  async function startQuiz(title: string, topicsToAsk: string[], count: number, difficulty: Difficulty, busyKey: string) {
-    const res = await generate<{ questions: Question[] }>("quiz", { topics: topicsToAsk, count, difficulty }, busyKey)
-    if (!res?.questions.length) return false
-    setQuiz((prev) => ({ key: (prev?.key ?? 0) + 1, title, questions: res.questions }))
-    return true
-  }
-
-  async function finishMock(attempt: MockAttempt) {
-    const byTopic: Record<string, number[]> = {}
-    attempt.tasks.forEach((t, i) => (byTopic[t.topic] ??= []).push(attempt.grades[i].score))
-    const scores = Object.fromEntries(Object.entries(byTopic).map(([t, s]) => [t, average(s)]))
-    update((p) => ({ ...applyScores(p, scores, attempt.score), attempts: [attempt, ...(p.attempts ?? [])].slice(0, 20) }))
-  }
+  // Each lesson kind has its own page; "all" practises the whole exam.
+  const lessonPage = (kind: "quiz" | "cards" | "written", topicId = "all") => `/exams/${id}/${kind}/${topicId}`
 
   function remove() {
-    if (!window.confirm(`¿Eliminar "${prep!.name}"? Se perderá su progreso.`)) return
     write<CalendarEvent[]>("events", NO_EVENTS, (all) => all.filter((e) => e.prepId !== id))
     setPreps((all) => all.filter((p) => p.id !== id))
     router.push("/exams")
@@ -136,9 +138,28 @@ export default function PrepPage() {
         <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/exams" />}>
           <ArrowLeft /> Exámenes
         </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Eliminar preparación" onClick={remove}>
-          <Trash2 />
-        </Button>
+        <Dialog>
+          <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Eliminar preparación" />}>
+            <Trash2 />
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <span className="mb-1 flex size-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                <Trash2 className="size-4" />
+              </span>
+              <DialogTitle>¿Eliminar &ldquo;{prep.name}&rdquo;?</DialogTitle>
+              <DialogDescription>
+                Se perderán sus temas, tu progreso y los resultados de cuestionarios. Tus archivos de {prep.subject} se conservan.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>Cancelar</DialogClose>
+              <Button variant="destructive" onClick={remove}>
+                Eliminar examen
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="space-y-1">
@@ -214,25 +235,68 @@ export default function PrepPage() {
               )}
 
               <ol className="space-y-2">
-                {topics.map((t, i) => (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      className="group flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                      onClick={() => setLessonFor(t)}
-                    >
-                      <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs">{i + 1}</span>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex justify-between gap-2 text-sm">
-                          <span className="truncate font-medium">{t.name}</span>
-                          <span className="shrink-0 text-muted-foreground">{t.mastery}%</span>
+                {topics.map((t, i) => {
+                  const open = openTopic === t.id
+                  return (
+                    <li key={t.id} className={`rounded-lg border transition-colors ${open ? "border-primary/40" : "hover:border-primary/40"}`}>
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={`lessons-${t.id}`}
+                        className="flex w-full items-center gap-3 rounded-lg p-3 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                        onClick={() => setOpenTopic(open ? null : t.id)}
+                      >
+                        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs">{i + 1}</span>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex justify-between gap-2 text-sm">
+                            <span className="truncate font-medium">{t.name}</span>
+                            <span className="shrink-0 text-muted-foreground">{t.mastery}%</span>
+                          </div>
+                          <GoalBar value={t.mastery} goal={goal} className="h-1.5" />
                         </div>
-                        <GoalBar value={t.mastery} goal={goal} className="h-1.5" />
-                      </div>
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                    </button>
-                  </li>
-                ))}
+                        <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+                      </button>
+                      {open && (
+                        <div id={`lessons-${t.id}`} className="space-y-3 px-3 pb-3 animate-in fade-in slide-in-from-top-1">
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {[
+                              { icon: FileText, title: "Texto inteligente", text: "Lectura paso a paso con preguntas rápidas.", href: summaryHref(t) },
+                              { icon: ListChecks, title: "Opción múltiple", text: "Cuestionario con explicación de cada respuesta.", href: lessonPage("quiz", t.id) },
+                              { icon: Layers, title: "Tarjetas de repaso", text: "Conceptos clave de este tema, uno por tarjeta.", href: lessonPage("cards", t.id) },
+                              { icon: PenLine, title: "Examen escrito", text: "Responde por escrito y recibe una calificación.", href: lessonPage("written", t.id) },
+                              { icon: BookOpen, title: "Lección con el tutor", text: "El tutor te explica y te pregunta en el chat.", href: lessonHref(t.name) },
+                            ].map(({ icon: Icon, title, text, href }) => (
+                              <Link
+                                key={title}
+                                href={href}
+                                className="group flex items-center gap-3 rounded-lg bg-muted/40 p-3 transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                              >
+                                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                                  <Icon className="size-4" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block text-sm font-medium">{title}</span>
+                                  <span className="block text-xs text-muted-foreground">{text}</span>
+                                </span>
+                                <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                              </Link>
+                            ))}
+                          </div>
+                          <SavedLessons
+                            items={[
+                              ...(isCurrentSummary(prep.summaries?.[t.id])
+                                ? [{ key: "summary", icon: FileText, title: "Texto inteligente", detail: "Lectura guardada", href: summaryHref(t) }]
+                                : []),
+                              ...(prep.savedLessons ?? [])
+                                .filter((l) => l.topicId === t.id)
+                                .map((l) => ({ key: l.id, ...SAVED_KINDS[l.kind], detail: `${l.date} · ${savedSize(l)}`, href: `/exams/${id}/lessons/${l.id}`, score: l.score })),
+                            ]}
+                          />
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
               </ol>
             </>
           )}
@@ -266,15 +330,10 @@ export default function PrepPage() {
                   {prep.cards?.length ? `${prep.cards.length} tarjetas listas` : "Repasa conceptos clave rápido."}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => openCards()} disabled={busy !== null}>
-                  {busy === "flashcards" ? "Creando…" : prep.cards?.length ? "Repasar" : "Crear tarjetas"}
+              <CardContent>
+                <Button size="sm" nativeButton={false} render={<Link href={lessonPage("cards")} />}>
+                  {prep.cards?.length ? "Repasar" : "Crear tarjetas"}
                 </Button>
-                {!!prep.cards?.length && (
-                  <Button size="sm" variant="ghost" onClick={() => openCards(true)} disabled={busy !== null}>
-                    Nuevas
-                  </Button>
-                )}
               </CardContent>
             </Card>
             <Card size="sm">
@@ -284,11 +343,7 @@ export default function PrepPage() {
                 <CardDescription>Opción múltiple con explicación de cada respuesta.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button
-                  size="sm"
-                  disabled={busy !== null}
-                  onClick={() => setQuizSetup({ topics: topicNames, count: 10, difficulty: "medio" })}
-                >
+                <Button size="sm" nativeButton={false} render={<Link href={lessonPage("quiz")} />}>
                   Crear cuestionario
                 </Button>
               </CardContent>
@@ -300,7 +355,7 @@ export default function PrepPage() {
                 <CardDescription>Responde preguntas y obtén una calificación.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Button size="sm" disabled={busy !== null} onClick={() => setMock((prev) => ({ key: (prev?.key ?? 0) + 1 }))}>
+                <Button size="sm" nativeButton={false} render={<Link href={lessonPage("written")} />}>
                   Comenzar simulacro
                 </Button>
               </CardContent>
@@ -336,17 +391,16 @@ export default function PrepPage() {
             {attempts.length > 0 && (
               <CardContent className="space-y-2">
                 {attempts.map((a) => (
-                  <button
+                  <Link
                     key={a.id}
-                    type="button"
-                    onClick={() => setMock((prev) => ({ key: (prev?.key ?? 0) + 1, review: a }))}
+                    href={`/exams/${id}/attempts/${a.id}`}
                     className="flex w-full justify-between rounded-lg border p-3 text-left text-sm hover:bg-muted/50"
                   >
                     <span>
                       {a.date} · {a.tasks.length} tareas · {formatTime(a.seconds)}
                     </span>
                     <span className="font-medium">{a.score}/100</span>
-                  </button>
+                  </Link>
                 ))}
               </CardContent>
             )}
@@ -413,148 +467,6 @@ export default function PrepPage() {
         </TabsContent>
       </Tabs>
 
-      {lessonFor && (
-        <Dialog open onOpenChange={(o) => !o && setLessonFor(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{lessonFor.name}</DialogTitle>
-              <DialogDescription>¿Cómo quieres estudiar este tema?</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-2">
-              {[
-                { icon: FileText, title: "Texto inteligente", text: "Lectura paso a paso con preguntas rápidas.", href: summaryHref(lessonFor) },
-                {
-                  icon: ListChecks,
-                  title: "Opción múltiple",
-                  text: "Cuestionario con explicación de cada respuesta.",
-                  run: () => setQuizSetup({ topics: [lessonFor.name], count: 10, difficulty: "medio" }),
-                },
-                {
-                  icon: Layers,
-                  title: "Tarjetas de repaso",
-                  text: "Conceptos clave de este tema, uno por tarjeta.",
-                  busy: busy === `cards:${lessonFor.id}`,
-                  run: () => topicCards(lessonFor),
-                },
-                {
-                  icon: PenLine,
-                  title: "Examen escrito",
-                  text: "Responde por escrito y recibe una calificación.",
-                  run: () => setMock((prev) => ({ key: (prev?.key ?? 0) + 1, topics: [lessonFor.name] })),
-                },
-                { icon: BookOpen, title: "Lección con el tutor", text: "El tutor te explica y te pregunta en el chat.", href: lessonHref(lessonFor.name) },
-              ].map(({ icon: Icon, title, text, href, run, busy: loading }) => {
-                const content = (
-                  <>
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                      <Icon className={`size-4 ${loading ? "animate-pulse" : ""}`} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium">{loading ? "Creando…" : title}</span>
-                      <span className="block text-xs text-muted-foreground">{text}</span>
-                    </span>
-                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-                  </>
-                )
-                const cls =
-                  "flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50"
-                return href ? (
-                  <Link key={title} href={href} className={cls}>
-                    {content}
-                  </Link>
-                ) : (
-                  <button
-                    key={title}
-                    type="button"
-                    className={cls}
-                    disabled={busy !== null}
-                    onClick={async () => {
-                      await run?.()
-                      setLessonFor(null)
-                    }}
-                  >
-                    {content}
-                  </button>
-                )
-              })}
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      <Flashcards
-        cards={deck ?? prep.cards ?? []}
-        open={cardsOpen}
-        onOpenChange={(o) => {
-          setCardsOpen(o)
-          if (!o) setDeck(null)
-        }}
-      />
-
-      {quizSetup && (
-        <Dialog open onOpenChange={(o) => !o && setQuizSetup(null)}>
-          <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Nuevo cuestionario</DialogTitle>
-              <DialogDescription>Opción múltiple; algunas preguntas tienen varias respuestas correctas.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label>Selecciona temas</Label>
-                <TopicPicker topics={topicNames} selected={quizSetup.topics} onChange={(t) => setQuizSetup({ ...quizSetup, topics: t })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Número de preguntas</Label>
-                <div className="flex gap-2" role="radiogroup" aria-label="Número de preguntas">
-                  {QUIZ_SIZES.map((n) => (
-                    <Button
-                      key={n}
-                      type="button"
-                      size="sm"
-                      role="radio"
-                      aria-checked={quizSetup.count === n}
-                      variant={quizSetup.count === n ? "default" : "outline"}
-                      onClick={() => setQuizSetup({ ...quizSetup, count: n })}
-                    >
-                      {n} preguntas
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Dificultad</Label>
-                <DifficultyPicker value={quizSetup.difficulty} onChange={(d) => setQuizSetup({ ...quizSetup, difficulty: d })} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                disabled={!quizSetup.topics.length || busy !== null}
-                onClick={async () => {
-                  if (await startQuiz("Cuestionario", quizSetup.topics, quizSetup.count, quizSetup.difficulty, "quiz")) setQuizSetup(null)
-                }}
-              >
-                {busy === "quiz" ? "Creando cuestionario…" : "Comenzar"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
-      {quiz && <Quiz key={quiz.key} title={quiz.title} questions={quiz.questions} onClose={() => setQuiz(null)} onFinish={recordQuiz} />}
-
-      {mock && (
-        <MockExam
-          key={mock.key}
-          topics={mock.topics ?? topicNames}
-          review={mock.review}
-          create={async (chosen, count, difficulty) =>
-            (await generate<{ tasks: MockTask[] }>("mock", { topics: chosen, count, difficulty }))?.tasks
-          }
-          grade={(tasks, answers) => generate<Graded>("grade", { tasks, answers })}
-          onDone={finishMock}
-          onClose={() => setMock(null)}
-        />
-      )}
     </div>
   )
 }

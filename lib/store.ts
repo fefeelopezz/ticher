@@ -71,6 +71,14 @@ export type MockAttempt = {
   toReview: string
 }
 
+// A lesson created from one topic, kept so it can be reopened from that topic's options.
+export type SavedLesson = {
+  id: string
+  topicId: string
+  date: string
+  score?: number
+} & ({ kind: "quiz"; questions: Question[] } | { kind: "cards"; cards: Card[] } | { kind: "written"; attempt: MockAttempt })
+
 export type ExamPrep = {
   id: string
   name: string
@@ -85,6 +93,7 @@ export type ExamPrep = {
   summaries?: Record<string, Summary>
   attempts?: MockAttempt[]
   quizzes?: { date: string; accuracy: number; count: number }[]
+  savedLessons?: SavedLesson[]
 }
 
 export const DEFAULT_GOAL = 75

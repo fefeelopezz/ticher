@@ -81,6 +81,21 @@ function TypedText({ text, onDone }: { text: string; onDone: () => void }) {
 
 type Props = { chatId?: string; initialPrompt?: string; initialSubject?: string }
 
+// Concave corner joining the composer's top border (bottom row) to the tab's left side (right column).
+// Drawn for the left side; mirror it with -scale-x-100 for the right.
+function Shoulder({ className }: { className: string }) {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden className={`absolute bottom-0 size-3 ${className}`}>
+      <path d="M0 11.5A11.5 11.5 0 0 0 11.5 0H12V12H0Z" className="fill-background" />
+      <path
+        d="M0 11.5A11.5 11.5 0 0 0 11.5 0"
+        fill="none"
+        className="stroke-border transition-colors group-focus-within:stroke-primary/50"
+      />
+    </svg>
+  )
+}
+
 export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const router = useRouter()
   const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
@@ -186,14 +201,13 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 py-6">
-      <div className="flex items-center justify-between gap-2">
-        <SubjectSelect value={subject} onChange={setSubject} />
-        {messages.length > 0 && (
+      {messages.length > 0 && (
+        <div className="flex justify-end">
           <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/" />}>
             <Plus /> Nuevo chat
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col gap-4 py-6">
         {messages.length === 0 ? (
@@ -313,12 +327,24 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
           </div>
         )}
         <form
-          className="flex items-center gap-1 rounded-2xl border bg-background p-2 shadow-sm transition-colors focus-within:border-primary/50"
+          className="group relative mt-11 flex items-center gap-1 rounded-2xl border bg-background p-2 shadow-sm transition-colors focus-within:border-primary/50"
           onSubmit={(e) => {
             e.preventDefault()
             send()
           }}
         >
+          {/* Tab rising out of the composer's top edge; its bottom row covers the composer border, and each
+              shoulder draws the curve from that border up into the tab's side while hiding the border under it. */}
+          <div className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 rounded-t-2xl border border-b-0 bg-background px-2 pt-1.5 pb-1 transition-colors group-focus-within:border-primary/50">
+            <Shoulder className="-left-3" />
+            <SubjectSelect
+              value={subject}
+              onChange={setSubject}
+              size="sm"
+              className="max-w-44 rounded-full border-primary bg-primary/10 px-3 text-xs font-semibold dark:bg-primary/10 dark:hover:bg-primary/20"
+            />
+            <Shoulder className="-right-3 -scale-x-100" />
+          </div>
           <Button type="button" variant="ghost" size="icon" aria-label="Adjuntar foto o archivo" onClick={() => fileInput.current?.click()}>
             <Paperclip />
           </Button>

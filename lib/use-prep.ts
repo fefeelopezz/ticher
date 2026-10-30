@@ -17,8 +17,13 @@ import {
   type ExamPrep,
   type MockTask,
   type QuizResult,
+  type SavedLesson,
   type Subject,
 } from "./store"
+
+// Saved lessons live in localStorage with the prep; the cap keeps it well under the browser quota.
+const MAX_SAVED_LESSONS = 60
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
 export type Kind = "topics" | "flashcards" | "quiz" | "summary" | "mock" | "grade"
 type Options = { topics?: string[]; count?: number; difficulty?: Difficulty; tasks?: MockTask[]; answers?: string[] }
@@ -82,5 +87,16 @@ export function usePrep(id: string) {
     }))
   }
 
-  return { prep, hydrated, materials, busy, setPreps, update, generate, recordQuiz }
+  // Keeps a topic's new lesson (newest first) and returns its id so the page can open it.
+  function saveLesson(lesson: DistributiveOmit<SavedLesson, "id" | "date">) {
+    const saved = { ...lesson, id: crypto.randomUUID(), date: today() } as SavedLesson
+    update((p) => ({ ...p, savedLessons: [saved, ...(p.savedLessons ?? [])].slice(0, MAX_SAVED_LESSONS) }))
+    return saved.id
+  }
+
+  function scoreLesson(lessonId: string, score: number) {
+    update((p) => ({ ...p, savedLessons: (p.savedLessons ?? []).map((l) => (l.id === lessonId ? { ...l, score } : l)) }))
+  }
+
+  return { prep, hydrated, materials, busy, setPreps, update, generate, recordQuiz, saveLesson, scoreLesson }
 }

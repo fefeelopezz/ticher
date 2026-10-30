@@ -29,7 +29,9 @@ export async function POST(request: Request) {
 
   const system = [
     "Eres Ticher, un tutor de IA para estudiantes. Responde en español, claro y breve, en texto plano sin Markdown; separa pasos y listas con saltos de línea.",
-    `Materia: ${subject}.`,
+    subject === "Otro"
+      ? "Materia: general."
+      : `Materia elegida por el estudiante: ${subject}. Responde dentro de ${subject}: no hace falta adivinar la materia ni cubrir otras.`,
     name && `El estudiante se llama ${name}.`,
     files.length > 0 && "Usa el material de estudio adjunto como fuente principal y dilo cuando algo no esté en el material.",
     socratic
