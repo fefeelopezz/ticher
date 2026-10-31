@@ -3,7 +3,26 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, BookOpen, ChevronDown, ChevronRight, FileText, Layers, ListChecks, PenLine, Plus, Sparkles, Trash2, type LucideIcon } from "lucide-react"
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  GraduationCap,
+  Layers,
+  ListChecks,
+  Pencil,
+  PenLine,
+  Plus,
+  Printer,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -17,6 +36,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { DatePicker } from "@/components/date-picker"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatTime } from "@/components/exam-practice"
 import { GoalBar } from "@/components/goal-bar"
@@ -28,6 +49,7 @@ import {
   daysUntil,
   forecast,
   isCurrentSummary,
+  isDue,
   readiness,
   today,
   useStudyTimer,
@@ -36,7 +58,7 @@ import {
   type SavedLesson,
   type Topic,
 } from "@/lib/store"
-import { same, usePrep } from "@/lib/use-prep"
+import { allCards, same, usePrep } from "@/lib/use-prep"
 import { PrepSkeleton } from "@/components/page-skeletons"
 
 const SAVED_KINDS: Record<SavedLesson["kind"], { icon: LucideIcon; title: string }> = {
@@ -50,26 +72,74 @@ const savedSize = (l: SavedLesson) =>
 
 type SavedItem = { key: string; icon: LucideIcon; title: string; detail: string; href: string; score?: number }
 
-// The lessons already created for a topic, listed under its options so they can be reopened.
-function SavedLessons({ items }: { items: SavedItem[] }) {
+// The lessons already created for a topic, listed under its options so they can be reopened or deleted.
+function SavedLessons({ items, onRemove }: { items: SavedItem[]; onRemove: (key: string) => void }) {
   if (!items.length) return null
   return (
     <div className="space-y-1.5 border-t pt-3">
       <p className="text-xs font-medium text-muted-foreground">Tus lecciones</p>
       <ul className="space-y-1">
         {items.map(({ key, icon: Icon, title, detail, href, score }) => (
-          <li key={key}>
-            <Link href={href} className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/60">
+          <li key={key} className="group/item flex items-center gap-1">
+            <Link href={href} className="flex min-w-0 flex-1 items-center gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/60">
               <Icon className="size-4 shrink-0 text-primary" />
               <span className="min-w-0 flex-1 truncate">
                 {title} <span className="text-muted-foreground">· {detail}</span>
               </span>
               {score !== undefined && <span className="shrink-0 text-sm font-medium tabular-nums">{score}%</span>}
             </Link>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`Eliminar ${title} del ${detail}`}
+              className="opacity-60 group-hover/item:opacity-100"
+              onClick={() => onRemove(key)}
+            >
+              <Trash2 />
+            </Button>
           </li>
         ))}
       </ul>
     </div>
+  )
+}
+
+// Rename a topic or edit an exam: a small form that saves on Enter.
+function EditDialog({
+  title,
+  open,
+  onOpenChange,
+  children,
+  onSave,
+}: {
+  title: string
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  children: React.ReactNode
+  onSave: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault()
+            onSave()
+            onOpenChange(false)
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </DialogHeader>
+          {children}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" type="button" />}>Cancelar</DialogClose>
+            <Button type="submit">Guardar</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -80,6 +150,8 @@ export default function PrepPage() {
   const [newTopic, setNewTopic] = useState("")
   // The topic whose lesson options are unfolded below its row.
   const [openTopic, setOpenTopic] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [editingExam, setEditingExam] = useState<{ name: string; date: string } | null>(null)
   useStudyTimer()
 
   if (!prep && !hydrated) return <PrepSkeleton />
@@ -107,6 +179,8 @@ export default function PrepPage() {
   const attempts = prep.attempts ?? []
   const quizzes = prep.quizzes ?? []
   const summaryHref = (topic: Topic) => `/exams/${id}/summary/${topic.id}`
+  const dueCards = allCards(prep).filter((c) => isDue(prep.reviews?.[c.front])).length
+  const mistakesOf = (topic: Topic) => (prep.mistakes ?? []).filter((q) => same(q.topic, topic.name)).length
 
   function addTopics(names: string[]) {
     update((p) => {
@@ -130,6 +204,66 @@ export default function PrepPage() {
     router.push("/exams")
   }
 
+  // The calendar entry created with the exam follows its name and date.
+  function saveExam({ name, date }: { name: string; date: string }) {
+    if (!name.trim() || !date) return
+    update((p) => ({ ...p, name: name.trim(), date }))
+    write<CalendarEvent[]>("events", NO_EVENTS, (all) => all.map((e) => (e.prepId === id ? { ...e, title: name.trim(), date } : e)))
+  }
+
+  function moveTopic(topicId: string, by: -1 | 1) {
+    update((p) => {
+      const list = [...(p.topics ?? [])]
+      const i = list.findIndex((t) => t.id === topicId)
+      if (i + by < 0 || i + by >= list.length) return p
+      ;[list[i], list[i + by]] = [list[i + by], list[i]]
+      return { ...p, topics: list }
+    })
+  }
+
+  // Questions and cards point at their topic by name, so the new name is carried over to them too.
+  function renameTopic({ id: topicId, name }: { id: string; name: string }) {
+    const old = topics.find((t) => t.id === topicId)?.name
+    if (!name.trim() || !old) return
+    const fix = <T extends { topic: string }>(x: T) => (same(x.topic, old) ? { ...x, topic: name.trim() } : x)
+    update((p) => ({
+      ...p,
+      topics: (p.topics ?? []).map((t) => (t.id === topicId ? { ...t, name: name.trim() } : t)),
+      mistakes: p.mistakes?.map(fix),
+      cards: p.cards?.map(fix),
+      savedLessons: p.savedLessons?.map((l) =>
+        l.kind === "quiz" ? { ...l, questions: l.questions.map(fix) } : l.kind === "cards" ? { ...l, cards: l.cards.map(fix) } : l
+      ),
+    }))
+  }
+
+  // Deleting a topic also drops its reading, saved lessons and pending mistakes.
+  function removeTopic(t: Topic) {
+    if (!window.confirm(`¿Eliminar el tema "${t.name}"? Se borran su lectura y sus lecciones guardadas.`)) return
+    setOpenTopic(null)
+    update((p) => {
+      const summaries = { ...p.summaries }
+      delete summaries[t.id]
+      return {
+        ...p,
+        summaries,
+        topics: (p.topics ?? []).filter((x) => x.id !== t.id),
+        savedLessons: (p.savedLessons ?? []).filter((l) => l.topicId !== t.id),
+        mistakes: (p.mistakes ?? []).filter((q) => !same(q.topic, t.name)),
+      }
+    })
+  }
+
+  function removeSaved(topicId: string, key: string) {
+    if (!window.confirm("¿Eliminar esta lección? No se puede deshacer.")) return
+    update((p) => {
+      if (key !== "summary") return { ...p, savedLessons: (p.savedLessons ?? []).filter((l) => l.id !== key) }
+      const summaries = { ...p.summaries }
+      delete summaries[topicId]
+      return { ...p, summaries }
+    })
+  }
+
   const lessonHref = (topic: string) =>
     `/?prompt=${encodeURIComponent(`Quiero una lección sobre "${topic}" para mi examen "${prep.name}". Explícame lo esencial y luego hazme una pregunta para comprobar que entendí.`)}&subject=${encodeURIComponent(prep.subject)}`
 
@@ -139,6 +273,30 @@ export default function PrepPage() {
         <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/exams" />}>
           <ArrowLeft /> Exámenes
         </Button>
+        <div className="flex gap-1">
+        <Button variant="ghost" size="icon-sm" aria-label="Editar nombre y fecha" onClick={() => setEditingExam({ name: prep.name, date: prep.date })}>
+          <Pencil />
+        </Button>
+        <EditDialog title="Editar examen" open={!!editingExam} onOpenChange={(o) => !o && setEditingExam(null)} onSave={() => editingExam && saveExam(editingExam)}>
+          {editingExam && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="exam-name">Nombre</Label>
+                <Input
+                  id="exam-name"
+                  autoFocus
+                  maxLength={80}
+                  value={editingExam.name}
+                  onChange={(e) => setEditingExam({ ...editingExam, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exam-date">Fecha del examen</Label>
+                <DatePicker id="exam-date" value={editingExam.date} onChange={(date) => setEditingExam({ ...editingExam, date })} />
+              </div>
+            </div>
+          )}
+        </EditDialog>
         <Dialog>
           <DialogTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Eliminar preparación" />}>
             <Trash2 />
@@ -161,7 +319,20 @@ export default function PrepPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
+      <EditDialog title="Renombrar tema" open={!!renaming} onOpenChange={(o) => !o && setRenaming(null)} onSave={() => renaming && renameTopic(renaming)}>
+        {renaming && (
+          <Input
+            autoFocus
+            aria-label="Nombre del tema"
+            maxLength={120}
+            value={renaming.name}
+            onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+          />
+        )}
+      </EditDialog>
 
       <div className="space-y-1">
         <p className="text-xs font-medium text-muted-foreground uppercase">{prep.subject}</p>
@@ -218,6 +389,21 @@ export default function PrepPage() {
             </Card>
           ) : (
             <>
+              {dueCards > 0 && (
+                <Card size="sm" className="bg-primary/5">
+                  <CardContent className="flex items-center gap-3">
+                    <Layers className="size-5 shrink-0 text-primary" />
+                    <p className="flex-1 text-sm">
+                      <span className="font-medium">Tienes {dueCards} {dueCards === 1 ? "tarjeta" : "tarjetas"} para hoy.</span>{" "}
+                      <span className="text-muted-foreground">Repasarlas a tiempo te ayuda a no olvidarlas.</span>
+                    </p>
+                    <Button size="sm" nativeButton={false} render={<Link href={`/exams/${id}/review/all`} />}>
+                      Repasar
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
               {next && (
                 <Card className="border-primary/40">
                   <CardHeader>
@@ -259,6 +445,23 @@ export default function PrepPage() {
                       </button>
                       {open && (
                         <div id={`lessons-${t.id}`} className="space-y-3 px-3 pt-2 pb-3 animate-in fade-in slide-in-from-top-1">
+                          <div className="flex flex-wrap items-center justify-end gap-1">
+                            <Button variant="ghost" size="icon-xs" aria-label="Subir tema" disabled={i === 0} onClick={() => moveTopic(t.id, -1)}>
+                              <ArrowUp />
+                            </Button>
+                            <Button variant="ghost" size="icon-xs" aria-label="Bajar tema" disabled={i === topics.length - 1} onClick={() => moveTopic(t.id, 1)}>
+                              <ArrowDown />
+                            </Button>
+                            <Button variant="ghost" size="xs" onClick={() => setRenaming({ id: t.id, name: t.name })}>
+                              <Pencil /> Renombrar
+                            </Button>
+                            <Button variant="ghost" size="xs" nativeButton={false} render={<Link href={`/exams/${id}/print/${t.id}`} />}>
+                              <Printer /> Exportar PDF
+                            </Button>
+                            <Button variant="ghost" size="xs" className="text-destructive hover:text-destructive" onClick={() => removeTopic(t)}>
+                              <Trash2 /> Eliminar
+                            </Button>
+                          </div>
                           <div className="grid gap-2 sm:grid-cols-2">
                             {[
                               { icon: FileText, title: "Texto inteligente", text: "Lectura paso a paso con preguntas rápidas.", href: summaryHref(t) },
@@ -266,6 +469,9 @@ export default function PrepPage() {
                               { icon: Layers, title: "Tarjetas de repaso", text: "Conceptos clave de este tema, uno por tarjeta.", href: lessonPage("cards", t.id) },
                               { icon: PenLine, title: "Examen escrito", text: "Responde por escrito y recibe una calificación.", href: lessonPage("written", t.id) },
                               { icon: BookOpen, title: "Lección con el tutor", text: "El tutor te explica y te pregunta en el chat.", href: lessonHref(t.name) },
+                              ...(mistakesOf(t)
+                                ? [{ icon: RotateCcw, title: `Repasar mis errores (${mistakesOf(t)})`, text: "Solo las preguntas que fallaste en este tema.", href: `/exams/${id}/mistakes/${t.id}` }]
+                                : []),
                             ].map(({ icon: Icon, title, text, href }) => (
                               <Link
                                 key={title}
@@ -284,6 +490,7 @@ export default function PrepPage() {
                             ))}
                           </div>
                           <SavedLessons
+                            onRemove={(key) => removeSaved(t.id, key)}
                             items={[
                               ...(isCurrentSummary(prep.summaries?.[t.id])
                                 ? [{ key: "summary", icon: FileText, title: "Texto inteligente", detail: "Lectura guardada", href: summaryHref(t), score: prep.summaries?.[t.id]?.score }]
@@ -322,7 +529,21 @@ export default function PrepPage() {
             </Button>
           </form>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Card size="sm" className="border-primary/40 sm:col-span-2">
+              <CardHeader>
+                <GraduationCap className="size-4 text-primary" />
+                <CardTitle>Modo examen final</CardTitle>
+                <CardDescription>
+                  Simulacro de todo el examen con tiempo: opción múltiple y preguntas escritas, sin ayudas hasta el final. Al terminar te dice qué temas reforzar.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button size="sm" nativeButton={false} render={<Link href={`/exams/${id}/final/all`} />}>
+                  Empezar simulacro final
+                </Button>
+              </CardContent>
+            </Card>
             <Card size="sm">
               <CardHeader>
                 <Layers className="size-4" />

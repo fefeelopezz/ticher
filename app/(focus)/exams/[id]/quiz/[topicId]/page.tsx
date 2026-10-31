@@ -13,7 +13,7 @@ const QUIZ_SIZES = [5, 10, 15]
 
 // Opción múltiple as its own page: choose topics, size and difficulty, then answer one question at a time.
 export default function QuizPage() {
-  const { id, hydrated, busy, generate, recordQuiz, saveLesson, topic, topicNames, back, found } = useLessonRoute()
+  const { id, prep, hydrated, busy, generate, recordQuiz, saveLesson, topic, topicNames, back, found } = useLessonRoute()
   const router = useRouter()
   const [setup, setSetup] = useState<{ topics: string[]; count: number; difficulty: Difficulty }>()
   const [questions, setQuestions] = useState<Question[]>()
@@ -24,7 +24,7 @@ export default function QuizPage() {
   if (!found) return <Missing back={back} />
 
   const title = topic?.name ?? "Cuestionario"
-  if (questions) return <Quiz title={title} back={back} questions={questions} onFinish={recordQuiz} />
+  if (questions) return <Quiz title={title} back={back} questions={questions} onFinish={recordQuiz} subject={prep?.subject} />
 
   const s = setup ?? { topics: topic ? [topic.name] : topicNames, count: 10, difficulty: "medio" as Difficulty }
 

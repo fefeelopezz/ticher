@@ -6,13 +6,14 @@ import { RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Flashcards } from "@/components/exam-practice"
 import { FocusShell, LessonLoader, Missing, settle, useLessonRoute } from "@/components/focus-shell"
+import { logLesson } from "@/lib/use-prep"
 import { useStudyTimer, type Card as StudyCard } from "@/lib/store"
 import { FocusSkeleton } from "@/components/page-skeletons"
 
 // Tarjetas de repaso as their own page. The whole exam reuses its saved deck;
 // a single topic gets a new deck saved under that topic.
 export default function CardsPage() {
-  const { id, prep, hydrated, busy, update, generate, saveLesson, topic, back, found } = useLessonRoute()
+  const { id, prep, hydrated, busy, update, generate, saveLesson, reviewCard, topic, back, found } = useLessonRoute()
   const router = useRouter()
   const [deck, setDeck] = useState<{ round: number; cards: StudyCard[] }>()
   const [failed, setFailed] = useState(false)
@@ -51,7 +52,7 @@ export default function CardsPage() {
   if (!found) return <Missing back={back} />
 
   const title = topic?.name ?? "Tarjetas de memoria"
-  if (cards && !done) return <Flashcards key={deck?.round ?? 0} cards={cards} back={back} title={title} onNew={create} busy={busy !== null} />
+  if (cards && !done) return <Flashcards key={deck?.round ?? 0} cards={cards} back={back} title={title} onNew={create} onAnswer={reviewCard} onFinish={logLesson} busy={busy !== null} />
 
   return (
     <FocusShell back={back} eyebrow={failed ? "Tarjetas de repaso" : "Creando tarjetas de repaso"} title={title}>

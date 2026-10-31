@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Check, RotateCcw } from "lucide-react"
+import { Check, MessageCircle, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { FocusShell } from "@/components/focus-shell"
 import { QuestionCard, ScoreRing } from "@/components/question-card"
@@ -18,16 +18,19 @@ type CardsProps = {
   onNew?: () => void
   // Called after the last card with the share (0-100) the student already knew.
   onFinish?: (known: number) => void
+  // Each card's answer, for spaced repetition.
+  onAnswer?: (card: Card, knew: boolean) => void
   busy?: boolean
 }
 
-export function Flashcards({ cards, back, title, onNew, onFinish, busy }: CardsProps) {
+export function Flashcards({ cards, back, title, onNew, onFinish, onAnswer, busy }: CardsProps) {
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [known, setKnown] = useState(0)
   const card = cards[index]
 
   function answer(knew: boolean) {
+    onAnswer?.(card, knew)
     const total = known + (knew ? 1 : 0)
     setKnown(total)
     setFlipped(false)
@@ -165,10 +168,21 @@ type QuizProps = {
   back: string
   questions: Question[]
   onFinish: (result: QuizResult) => void
+  // Subject for the tutor chat opened by "Explícame esto".
+  subject?: string
+  eyebrow?: string
 }
 
+const optionText = (q: Question, picked: number[]) => picked.map((i) => q.options[i]).join(" / ") || "nada"
+
+// Opens the tutor with the missed question, the student's answer and the right one already written.
+export const explainHref = (q: Question, chosen: number[], subject = "Otro") =>
+  `/?prompt=${encodeURIComponent(
+    `No entendí esta pregunta de "${q.topic}": "${q.question}". Respondí "${optionText(q, chosen)}" y la correcta era "${optionText(q, q.correct)}". ¿Me explicas por qué, paso a paso?`
+  )}&subject=${encodeURIComponent(subject)}`
+
 // Astra's "Cuestionario": one question at a time, "Revisar" shows the explanation, results show accuracy and time.
-export function Quiz({ title, back, questions, onFinish }: QuizProps) {
+export function Quiz({ title, back, questions, onFinish, subject, eyebrow = "Opción múltiple" }: QuizProps) {
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<number[][]>([])
   const [result, setResult] = useState<QuizResult | null>(null)
@@ -187,12 +201,14 @@ export function Quiz({ title, back, questions, onFinish }: QuizProps) {
     const all = [...answers, chosen]
     setAnswers(all)
     if (!last) return setIndex(index + 1)
-    const correct = questions.filter((qq, i) => isRight(qq.correct, all[i])).length
+    const right = questions.filter((qq, i) => isRight(qq.correct, all[i]))
     const done = {
       byTopic: scoreByTopic(questions, all),
-      accuracy: Math.round((correct / questions.length) * 100),
+      accuracy: Math.round((right.length / questions.length) * 100),
       seconds: Math.round((Date.now() - startedAt.current) / 1000),
       count: questions.length,
+      missed: questions.filter((qq) => !right.includes(qq)),
+      right: right.map((qq) => qq.question),
     }
     setResult(done)
     onFinish(done)
@@ -206,7 +222,7 @@ export function Quiz({ title, back, questions, onFinish }: QuizProps) {
       back={back}
       progress={result ? 1 : index / questions.length}
       label={result ? "" : `${index + 1} / ${questions.length}`}
-      eyebrow="Opción múltiple"
+      eyebrow={eyebrow}
       title={result ? "Resultados" : title}
       description={result || q.topic === title ? undefined : q.topic}
     >
@@ -227,6 +243,24 @@ export function Quiz({ title, back, questions, onFinish }: QuizProps) {
           </div>
           {strong.length > 0 && <p className="text-sm">💪 Fortalezas: {strong.join(", ")}</p>}
           {weak.length > 0 && <p className="text-sm">⚡ Puntos débiles: {weak.join(", ")}</p>}
+          {(result.missed?.length ?? 0) > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Preguntas que fallaste</p>
+              {questions.map((qq, i) =>
+                result.missed?.includes(qq) ? (
+                  <div key={i} className="space-y-2 rounded-xl border p-4">
+                    <p className="text-sm font-medium">{qq.question}</p>
+                    <p className="text-sm text-muted-foreground">
+                      Tu respuesta: {optionText(qq, answers[i] ?? [])} · Correcta: {optionText(qq, qq.correct)}
+                    </p>
+                    <Button size="sm" variant="outline" nativeButton={false} render={<Link href={explainHref(qq, answers[i] ?? [], subject)} />}>
+                      <MessageCircle /> Explícame esto
+                    </Button>
+                  </div>
+                ) : null
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <QuestionCard key={index} question={q} continueLabel={last ? "Ver resultados" : "Continuar"} onDone={answered} />

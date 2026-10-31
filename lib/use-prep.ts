@@ -5,14 +5,19 @@ import { toast } from "sonner"
 import { postJson } from "./api"
 import { toPayload } from "./files"
 import {
+  NO_LESSONS,
   NO_PREPS,
   NO_SUBJECTS,
   earn,
+  nextReview,
   readiness,
   today,
   useHydrated,
   useStored,
   withSnapshot,
+  write,
+  type Card,
+  type Question,
   type Difficulty,
   type ExamPrep,
   type MockTask,
@@ -84,7 +89,14 @@ export function usePrep(id: string) {
     update((p) => ({
       ...applyScores(p, result.byTopic, result.accuracy),
       quizzes: [{ date: today(), accuracy: result.accuracy, count: result.count }, ...(p.quizzes ?? [])].slice(0, 30),
+      mistakes: trackMistakes(p.mistakes, result),
     }))
+    logLesson()
+  }
+
+  // Spaced repetition: each answered card gets its next due date.
+  function reviewCard(card: Card, knew: boolean) {
+    update((p) => ({ ...p, reviews: { ...p.reviews, [card.front]: nextReview(p.reviews?.[card.front], knew) } }))
   }
 
   // Keeps a topic's new lesson (newest first) and returns its id so the page can open it.
@@ -98,5 +110,25 @@ export function usePrep(id: string) {
     update((p) => ({ ...p, savedLessons: (p.savedLessons ?? []).map((l) => (l.id === lessonId ? { ...l, score } : l)) }))
   }
 
-  return { prep, hydrated, materials, busy, setPreps, update, generate, recordQuiz, saveLesson, scoreLesson }
+  return { prep, hydrated, materials, busy, setPreps, update, generate, recordQuiz, saveLesson, scoreLesson, reviewCard }
+}
+
+// A finished lesson counts for the streak and the daily goal.
+export const logLesson = () => write<string[]>("lessons", NO_LESSONS, (l) => [...l, today()].slice(-500))
+
+const MAX_MISTAKES = 100
+
+// Newly missed questions go first (no repeats); ones answered right this time leave the list.
+export function trackMistakes(old: Question[] = [], result: QuizResult) {
+  const right = new Set(result.right ?? [])
+  const missed = result.missed ?? []
+  const missedText = new Set(missed.map((q) => q.question))
+  return [...missed, ...old.filter((q) => !missedText.has(q.question))].filter((q) => !right.has(q.question)).slice(0, MAX_MISTAKES)
+}
+
+// Every flashcard of an exam (its shared deck plus each topic's saved decks), without repeats.
+export function allCards(p: ExamPrep) {
+  const decks = [p.cards ?? [], ...(p.savedLessons ?? []).flatMap((l) => (l.kind === "cards" ? [l.cards] : []))]
+  const seen = new Set<string>()
+  return decks.flat().filter((c) => !seen.has(c.front) && seen.add(c.front))
 }

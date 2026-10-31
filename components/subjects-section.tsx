@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { FileText, Trash2, Upload } from "lucide-react"
+import { Camera, FileText, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -75,6 +75,7 @@ export async function openMaterial(m: Material, markdown = false) {
 export function FileDrop({ onFiles, compact }: { onFiles: (files: File[]) => void; compact?: boolean }) {
   const [over, setOver] = useState(false)
   return (
+    <div className="space-y-2">
     <label
       className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-center text-sm text-muted-foreground transition-colors hover:bg-muted/50 has-focus-visible:ring-3 has-focus-visible:ring-ring/50 ${over ? "bg-muted" : ""} ${compact ? "p-3" : "p-6"}`}
       onDragOver={(e) => {
@@ -104,6 +105,22 @@ export function FileDrop({ onFiles, compact }: { onFiles: (files: File[]) => voi
         }}
       />
     </label>
+    {/* On phones this opens the camera, so a page of notes becomes material the AI can read. */}
+    <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/50 has-focus-visible:ring-3 has-focus-visible:ring-ring/50">
+      <Camera className="size-4" />
+      Sacar foto de tus apuntes
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="sr-only"
+        onChange={(e) => {
+          onFiles([...(e.target.files ?? [])])
+          e.target.value = ""
+        }}
+      />
+    </label>
+    </div>
   )
 }
 

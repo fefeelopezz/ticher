@@ -3,7 +3,7 @@
 import { MockExam, type Graded } from "@/components/mock-exam"
 import { Missing, useLessonRoute } from "@/components/focus-shell"
 import { average, useStudyTimer, type MockAttempt, type MockTask } from "@/lib/store"
-import { applyScores } from "@/lib/use-prep"
+import { applyScores, logLesson } from "@/lib/use-prep"
 import { FocusSkeleton } from "@/components/page-skeletons"
 
 // Examen escrito as its own page: set it up, write the answers, get the AI grade.
@@ -19,6 +19,7 @@ export default function WrittenPage() {
     attempt.tasks.forEach((t, i) => (byTopic[t.topic] ??= []).push(attempt.grades[i].score))
     const scores = Object.fromEntries(Object.entries(byTopic).map(([t, s]) => [t, average(s)]))
     update((p) => ({ ...applyScores(p, scores, attempt.score), attempts: [attempt, ...(p.attempts ?? [])].slice(0, 20) }))
+    logLesson()
     if (topic) saveLesson({ kind: "written", topicId: topic.id, attempt, score: attempt.score })
   }
 

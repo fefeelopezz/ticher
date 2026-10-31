@@ -15,6 +15,7 @@ import {
   isoDate,
   longestStreak,
   readiness,
+  useActivity,
   useHydrated,
   useStored,
   type ExamPrep,
@@ -50,6 +51,26 @@ export default function ActivityPage() {
   const lastWeekTotal = Array.from({ length: 7 }, (_, i) => mins(daysAgo(13 - i))).reduce((a, b) => a + b, 0)
   const maxDay = Math.max(1, ...week.map(mins))
   const activeDays = new Set([...Object.keys(minutes).filter((k) => minutes[k] > 0), ...lessons])
+  const { streak, longest } = useActivity()
+  const scores = preps.flatMap((p) => [
+    ...(p.quizzes ?? []).map((q) => q.accuracy),
+    ...(p.savedLessons ?? []).flatMap((l) => (l.score === undefined ? [] : [l.score])),
+    ...(p.attempts ?? []).map((a) => a.score),
+  ])
+  // Unlocked from what is already stored, so old activity counts too.
+  const achievements = [
+    { icon: "🌱", title: "Primera lección", text: "Termina tu primera lección.", done: lessons.length >= 1 },
+    { icon: "📚", title: "10 lecciones", text: "Completa 10 lecciones.", done: lessons.length >= 10 },
+    { icon: "🔥", title: "Racha de 7 días", text: "Estudia 7 días seguidos.", done: longest >= 7 },
+    { icon: "🏆", title: "Racha de 30 días", text: "Estudia 30 días seguidos.", done: longest >= 30 },
+    { icon: "💯", title: "Primer 100%", text: "Acierta todo en una lección.", done: scores.some((x) => x >= 100) },
+    {
+      icon: "🎯",
+      title: "Tema dominado",
+      text: "Lleva un tema a tu meta.",
+      done: preps.some((p) => (p.topics ?? []).some((t) => t.mastery >= (p.goal ?? DEFAULT_GOAL))),
+    },
+  ]
 
   // 53 week columns ending this week, Sunday-first rows.
   const start = daysAgo(52 * 7 + new Date().getDay())
@@ -161,6 +182,32 @@ export default function ActivityPage() {
               ))}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Logros</CardTitle>
+          <CardDescription>
+            {achievements.filter((a) => a.done).length} de {achievements.length} desbloqueados · racha actual: {streak}{" "}
+            {streak === 1 ? "día" : "días"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-2 sm:grid-cols-2">
+          {achievements.map((a) => (
+            <div key={a.title} className={cn("flex items-center gap-3 rounded-lg border p-3", !a.done && "opacity-50 grayscale")}>
+              <span className="text-2xl" aria-hidden>
+                {a.icon}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  {a.title}
+                  {a.done && <span className="sr-only"> (desbloqueado)</span>}
+                </span>
+                <span className="block text-xs text-muted-foreground">{a.text}</span>
+              </span>
+            </div>
+          ))}
         </CardContent>
       </Card>
 

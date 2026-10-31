@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react"
 import { toast } from "sonner"
-import { today, type Point, type Topic } from "./progress"
+import { currentStreak, longestStreak, today, type Point, type Review, type Topic } from "./progress"
 import { planSync } from "./sync"
 
 export * from "./progress"
@@ -33,7 +33,15 @@ export type Question = { topic: string; question: string; options: string[]; cor
 
 export type Difficulty = "basico" | "medio" | "avanzado"
 
-export type QuizResult = { byTopic: Record<string, number>; accuracy: number; seconds: number; count: number }
+// missed/right feed the "Repasar mis errores" lesson: missed questions are kept, ones answered right again are dropped.
+export type QuizResult = {
+  byTopic: Record<string, number>
+  accuracy: number
+  seconds: number
+  count: number
+  missed?: Question[]
+  right?: string[]
+}
 
 // Astra's "Texto inteligente", as observed in a real lesson: one step per section with text,
 // callout boxes, cards, numbered steps and an inline quick check; a short quiz closes the lesson.
@@ -96,6 +104,10 @@ export type ExamPrep = {
   attempts?: MockAttempt[]
   quizzes?: { date: string; accuracy: number; count: number }[]
   savedLessons?: SavedLesson[]
+  // Spaced repetition schedule per flashcard, keyed by the card's front.
+  reviews?: Record<string, Review>
+  mistakes?: Question[]
+  finals?: { date: string; score: number; seconds: number }[]
 }
 
 export const DEFAULT_GOAL = 75
@@ -131,7 +143,13 @@ export type Profile = {
   socratic: boolean
   // Small square JPEG as a data URL (see lib/avatar.ts); absent until the student picks one.
   photo?: string
+  // Minutes a day; one lesson also meets the goal.
+  dailyGoal?: number
+  // Emails before an exam (read by the daily cron from the cloud copy); on unless turned off.
+  reminders?: boolean
 }
+
+export const DEFAULT_DAILY_GOAL = 20
 
 export type Material = {
   id: string
@@ -300,6 +318,35 @@ export const useHydrated = () =>
     () => true,
     () => false
   )
+
+// The signed-in email, read from the ticher_user cookie; empty during server render.
+export const useEmail = () =>
+  useSyncExternalStore(
+    () => () => {},
+    currentUser,
+    () => ""
+  )
+
+// A day counts for the streak with any study minute or finished lesson (same rule as Mi actividad).
+export function useActivity() {
+  const [lessons] = useStored<string[]>("lessons", NO_LESSONS)
+  const [minutes] = useStored<Record<string, number>>("minutes", NO_MINUTES)
+  const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
+  const hydrated = useHydrated()
+  const goal = profile.dailyGoal ?? DEFAULT_DAILY_GOAL
+  // Reading the clock while prerendering is not allowed (and the data isn't loaded yet anyway).
+  if (!hydrated) return { streak: 0, longest: 0, todayMinutes: 0, goal, goalMet: false }
+  const days = [...Object.keys(minutes).filter((k) => minutes[k] > 0), ...lessons]
+  const todayMinutes = minutes[today()] ?? 0
+  const todayLessons = lessons.filter((d) => d === today()).length
+  return {
+    streak: currentStreak(days),
+    longest: longestStreak(days),
+    todayMinutes,
+    goal,
+    goalMet: todayMinutes >= goal || todayLessons > 0,
+  }
+}
 
 // Counts a study minute every 60 s while the page is visible (used on the chat and exam pages).
 export function useStudyTimer() {

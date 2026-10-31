@@ -7,7 +7,7 @@ import { ArrowLeft, CircleCheck, CornerDownLeft, ListOrdered, RotateCcw, X } fro
 import { Button } from "@/components/ui/button"
 import { QuestionCard, ScoreRing } from "@/components/question-card"
 import { cn } from "@/lib/utils"
-import { NO_LESSONS, isCurrentSummary, today, useStudyTimer, write, type Callout, type Summary } from "@/lib/store"
+import { isCurrentSummary, useStudyTimer, type Callout, type Summary } from "@/lib/store"
 import { usePrep } from "@/lib/use-prep"
 import { FocusSkeleton } from "@/components/page-skeletons"
 import { LessonLoader, settle } from "@/components/focus-shell"
@@ -133,7 +133,6 @@ export default function SummaryPage() {
       topics: (p.topics ?? []).map((t) => (t.id === topic.id ? { ...t, lessons: t.lessons + 1 } : t)),
       summaries: { ...p.summaries, [topic.id]: { ...p.summaries![topic.id], score: accuracy } },
     }))
-    write<string[]>("lessons", NO_LESSONS, (l) => [...l, today()])
   }
 
   if (!hydrated) return <FocusSkeleton />

@@ -45,6 +45,31 @@ export const bump = (mastery: number, by: number) => clamp(mastery + by)
 // A 0-100 score earns 0-10 points: a perfect quiz, exam or finished summary adds 10%.
 export const earn = (mastery: number, score: number) => bump(mastery, Math.round(Math.min(100, Math.max(0, score)) / 10))
 
+// Days in a row with activity, ending today; yesterday still counts so the streak isn't lost before studying today.
+export function currentStreak(dates: string[], now = new Date()) {
+  const days = new Set(dates)
+  const step = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1)
+  let cursor = days.has(isoDate(now)) ? now : step(now)
+  let run = 0
+  while (days.has(isoDate(cursor))) {
+    run++
+    cursor = step(cursor)
+  }
+  return run
+}
+
+// Spaced repetition: "Repasar" brings a card back tomorrow; each "Lo sabía" waits longer (3, 7, 15, 30 days).
+export const REVIEW_DAYS = [1, 3, 7, 15, 30]
+export type Review = { due: string; step: number }
+
+export function nextReview(prev: Review | undefined, knew: boolean, now = new Date()): Review {
+  const step = knew ? Math.min((prev?.step ?? 0) + 1, REVIEW_DAYS.length - 1) : 0
+  return { step, due: isoDate(new Date(now.getFullYear(), now.getMonth(), now.getDate() + REVIEW_DAYS[step])) }
+}
+
+// Cards never reviewed are due too: they need their first pass.
+export const isDue = (review: Review | undefined, date = today()) => !review || review.due <= date
+
 export function longestStreak(dates: string[]) {
   const days = [...new Set(dates)].sort()
   let best = 0
@@ -54,4 +79,14 @@ export function longestStreak(dates: string[]) {
     best = Math.max(best, run)
   })
   return best
+}
+
+// Exam reminder emails go out this many days before the exam.
+export const REMINDER_DAYS = [7, 3, 1]
+
+export function examsToRemind<T extends { date: string }>(preps: T[], now = new Date()) {
+  return preps.flatMap((p) => {
+    const days = daysUntil(p.date, now)
+    return REMINDER_DAYS.includes(days) ? [{ prep: p, days }] : []
+  })
 }
