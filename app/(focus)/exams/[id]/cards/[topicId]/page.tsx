@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Flashcards } from "@/components/exam-practice"
-import { FocusShell, Missing, useLessonRoute } from "@/components/focus-shell"
+import { FocusShell, LessonLoader, Missing, settle, useLessonRoute } from "@/components/focus-shell"
 import { useStudyTimer, type Card as StudyCard } from "@/lib/store"
 import { FocusSkeleton } from "@/components/page-skeletons"
 
@@ -16,6 +16,7 @@ export default function CardsPage() {
   const router = useRouter()
   const [deck, setDeck] = useState<{ round: number; cards: StudyCard[] }>()
   const [failed, setFailed] = useState(false)
+  const [done, setDone] = useState(false)
   const requested = useRef(false)
   useStudyTimer()
 
@@ -26,10 +27,16 @@ export default function CardsPage() {
     setFailed(false)
     const res = await generate<{ cards: StudyCard[] }>("flashcards", topic ? { topics: [topic.name] } : {})
     if (!res?.cards.length) return setFailed(true)
+    // Only the first deck shows the loader; "Tarjetas nuevas" swaps the deck in place.
+    if (!cards) {
+      setDone(true)
+      await settle()
+    }
     // A topic's deck is saved under that topic and opened from there; the exam keeps one shared deck.
     if (topic) return router.replace(`/exams/${id}/lessons/${saveLesson({ kind: "cards", topicId: topic.id, cards: res.cards })}`)
     update((p) => ({ ...p, cards: res.cards }))
     setDeck((d) => ({ round: (d?.round ?? 0) + 1, cards: res.cards }))
+    setDone(false)
   }
 
   // Create the deck on first visit; the ref stops double requests.
@@ -44,10 +51,10 @@ export default function CardsPage() {
   if (!found) return <Missing back={back} />
 
   const title = topic?.name ?? "Tarjetas de memoria"
-  if (cards) return <Flashcards key={deck?.round ?? 0} cards={cards} back={back} title={title} onNew={create} busy={busy !== null} />
+  if (cards && !done) return <Flashcards key={deck?.round ?? 0} cards={cards} back={back} title={title} onNew={create} busy={busy !== null} />
 
   return (
-    <FocusShell back={back} eyebrow="Tarjetas de repaso" title={title}>
+    <FocusShell back={back} eyebrow={failed ? "Tarjetas de repaso" : "Creando tarjetas de repaso"} title={title}>
       {failed ? (
         <div className="space-y-4">
           <p className="text-muted-foreground">No pudimos crear las tarjetas. Revisa el mensaje de abajo e intenta otra vez.</p>
@@ -56,10 +63,7 @@ export default function CardsPage() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-4" aria-busy="true">
-          <p className="text-muted-foreground">Ticher está armando tus tarjetas. Tarda unos segundos.</p>
-          <div className="h-64 animate-pulse rounded-3xl bg-muted" />
-        </div>
+        <LessonLoader done={done} />
       )}
     </FocusShell>
   )

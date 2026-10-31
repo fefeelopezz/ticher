@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { DifficultyPicker, Quiz, TopicPicker } from "@/components/exam-practice"
-import { FocusShell, Missing, useLessonRoute } from "@/components/focus-shell"
+import { FocusShell, LessonLoader, Missing, settle, useLessonRoute } from "@/components/focus-shell"
 import { useStudyTimer, type Difficulty, type Question } from "@/lib/store"
 import { FocusSkeleton } from "@/components/page-skeletons"
 
@@ -17,6 +17,7 @@ export default function QuizPage() {
   const router = useRouter()
   const [setup, setSetup] = useState<{ topics: string[]; count: number; difficulty: Difficulty }>()
   const [questions, setQuestions] = useState<Question[]>()
+  const [done, setDone] = useState(false)
   useStudyTimer()
 
   if (!hydrated) return <FocusSkeleton />
@@ -30,9 +31,19 @@ export default function QuizPage() {
   async function start() {
     const res = await generate<{ questions: Question[] }>("quiz", { topics: s.topics, count: s.count, difficulty: s.difficulty })
     if (!res?.questions.length) return
+    setDone(true)
+    await settle()
     // A topic's quiz is saved under that topic and opened from there; the whole-exam quiz is one-off.
     if (topic) router.replace(`/exams/${id}/lessons/${saveLesson({ kind: "quiz", topicId: topic.id, questions: res.questions })}`)
     else setQuestions(res.questions)
+  }
+
+  if (busy || done) {
+    return (
+      <FocusShell back={back} eyebrow="Creando opción múltiple" title={title}>
+        <LessonLoader done={done} />
+      </FocusShell>
+    )
   }
 
   return (
@@ -68,7 +79,7 @@ export default function QuizPage() {
           <DifficultyPicker value={s.difficulty} onChange={(d) => setSetup({ ...s, difficulty: d })} />
         </div>
         <Button size="lg" className="h-12 w-full rounded-xl text-base" disabled={!s.topics.length || busy !== null} onClick={start}>
-          {busy ? "Creando cuestionario…" : "Comenzar"}
+          Comenzar
         </Button>
       </div>
     </FocusShell>

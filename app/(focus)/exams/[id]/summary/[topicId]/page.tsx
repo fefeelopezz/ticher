@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { NO_LESSONS, isCurrentSummary, today, useStudyTimer, write, type Callout, type Summary } from "@/lib/store"
 import { usePrep } from "@/lib/use-prep"
 import { FocusSkeleton } from "@/components/page-skeletons"
+import { LessonLoader, settle } from "@/components/focus-shell"
 
 const CALLOUTS: Record<Callout["kind"], { icon: string; className: string }> = {
   definicion: { icon: "📖", className: "border-amber-500/40 bg-amber-500/[0.06]" },
@@ -51,6 +52,7 @@ export default function SummaryPage() {
   const [checks, setChecks] = useState<Record<number, boolean>>({})
   const [finals, setFinals] = useState<boolean[]>([])
   const [failed, setFailed] = useState(false)
+  const [ready, setReady] = useState(false)
   const requested = useRef(false)
   const startedAt = useRef(0)
   useStudyTimer()
@@ -70,10 +72,16 @@ export default function SummaryPage() {
     setFailed(false)
     const res = await generate<{ summary: Summary }>("summary", { topics: [topic.name] })
     if (!res?.summary) return setFailed(true)
+    // Only the first reading shows the loader; "Generar otro resumen" swaps it in place.
+    if (!summary) {
+      setReady(true)
+      await settle()
+    }
     update((p) => ({ ...p, summaries: { ...p.summaries, [topic.id]: res.summary } }))
     setStep(0)
     setChecks({})
     setFinals([])
+    setReady(false)
   }
 
   // Generate on first visit (or when an old-format summary is stored); the ref stops double requests.
@@ -167,7 +175,7 @@ export default function SummaryPage() {
     </header>
   )
 
-  if (!summary) {
+  if (!summary || ready) {
     return (
       <>
         {header}
@@ -181,15 +189,10 @@ export default function SummaryPage() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-6" aria-busy="true">
-              <p className="text-xs font-semibold tracking-wide text-primary uppercase">Texto inteligente</p>
-              <p className="font-serif text-3xl leading-tight">Preparando tu lectura sobre {topic.name}…</p>
-              <p className="text-muted-foreground">Ticher está leyendo tu material y armando las secciones. Tarda unos segundos.</p>
-              <div className="space-y-3 pt-4">
-                {[100, 92, 96, 70].map((w, i) => (
-                  <div key={i} className="h-3 animate-pulse rounded-full bg-muted" style={{ width: `${w}%` }} />
-                ))}
-              </div>
+            <div className="space-y-6">
+              <p className="text-xs font-semibold tracking-wide text-primary uppercase">Creando texto inteligente</p>
+              <h1 className="font-serif text-3xl leading-tight tracking-tight text-balance sm:text-4xl">{topic.name}</h1>
+              <LessonLoader done={ready} />
             </div>
           )}
         </main>

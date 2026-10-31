@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react"
 import { toast } from "sonner"
 import { today, type Point, type Topic } from "./progress"
+import { planSync } from "./sync"
 
 export * from "./progress"
 
@@ -181,7 +182,72 @@ export const readStored = <T,>(key: string, initial: T) => parse(localStorage.ge
 
 const listeners = new Set<() => void>()
 
+// Cloud sync through /api/data (Supabase). localStorage stays the working copy so pages read it
+// synchronously; the cloud copy follows the user to other browsers. Keys changed here are "dirty"
+// until the server confirms them, so a pull never overwrites edits that haven't been uploaded.
+const DIRTY = "__dirty"
+const readDirty = () => parse<string[]>(localStorage.getItem(storageKey(DIRTY)), [])
+const setDirty = (keys: string[]) => localStorage.setItem(storageKey(DIRTY), JSON.stringify(keys))
+let pulledFor: string | null = null
+let pushTimer: ReturnType<typeof setTimeout> | undefined
+let flushOnLeave = false
+
+async function push(keepalive = false) {
+  clearTimeout(pushTimer)
+  for (const key of readDirty()) {
+    const raw = localStorage.getItem(storageKey(key))
+    try {
+      if (raw !== null) {
+        const res = await fetch("/api/data", {
+          method: "PUT",
+          keepalive,
+          headers: { "Content-Type": "application/json" },
+          body: `{"key":${JSON.stringify(key)},"value":${raw}}`,
+        })
+        // Offline, signed out or Supabase not configured: the key stays dirty for the next try.
+        if (!res.ok || !(await res.json()).enabled) return
+      }
+    } catch {
+      return
+    }
+    // Edited again while uploading: keep it dirty so the newer value goes up too.
+    if (localStorage.getItem(storageKey(key)) === raw) setDirty(readDirty().filter((k) => k !== key))
+  }
+}
+
+async function pull() {
+  pulledFor = currentUser()
+  try {
+    const res = await fetch("/api/data")
+    const data = await res.json()
+    if (!res.ok || !data.enabled) {
+      // Not signed in yet (login page): try again on the next page.
+      if (res.status === 401) pulledFor = null
+      return
+    }
+    const items = data.items as { key: string; value: unknown }[]
+    const local = DATA_KEYS.filter((k) => localStorage.getItem(storageKey(k)) !== null)
+    const plan = planSync(
+      items.map((i) => i.key),
+      local,
+      readDirty()
+    )
+    for (const item of items) if (plan.apply.includes(item.key)) localStorage.setItem(storageKey(item.key), JSON.stringify(item.value))
+    setDirty(plan.push)
+    listeners.forEach((l) => l())
+    push()
+  } catch {
+    pulledFor = null
+  }
+}
+
 function subscribe(cb: () => void) {
+  // First subscriber for this user pulls the cloud copy; switching accounts pulls again.
+  if (pulledFor !== currentUser()) pull()
+  if (!flushOnLeave) {
+    flushOnLeave = true
+    window.addEventListener("pagehide", () => push(true))
+  }
   listeners.add(cb)
   window.addEventListener("storage", cb)
   return () => {
@@ -190,7 +256,6 @@ function subscribe(cb: () => void) {
   }
 }
 
-// shortcut: data lives in localStorage per browser, swap for a database once there are real accounts.
 export function useStored<T>(key: string, initial: T) {
   const raw = useSyncExternalStore(
     subscribe,
@@ -221,6 +286,9 @@ export function write<T>(key: string, initial: T, next: T | ((prev: T) => T)) {
     toast.error("No hay espacio en el navegador para guardar esto. Borra conversaciones o materiales viejos.")
     return
   }
+  if (!readDirty().includes(key)) setDirty([...readDirty(), key])
+  clearTimeout(pushTimer)
+  pushTimer = setTimeout(push, 1500)
   listeners.forEach((l) => l())
 }
 

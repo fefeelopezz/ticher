@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DifficultyPicker, TopicPicker, formatTime } from "@/components/exam-practice"
-import { FocusShell } from "@/components/focus-shell"
+import { FocusShell, LessonLoader, settle } from "@/components/focus-shell"
 import { today, type Difficulty, type MockAttempt, type MockGrade, type MockTask } from "@/lib/store"
 
 export type Graded = { grades: MockGrade[]; score: number; strengths: string; toReview: string }
@@ -29,7 +29,7 @@ const LIMITS: (number | null)[] = [null, 15, 30, 45, 60]
 // Astra's "Examen Escrito Simulado": pick topics and a time limit, answer in writing, get an AI grade.
 export function MockExam({ topics, title, back, create, grade, onDone }: Props) {
   const router = useRouter()
-  const [phase, setPhase] = useState<"setup" | "creating" | "writing" | "grading" | "result">("setup")
+  const [phase, setPhase] = useState<"setup" | "creating" | "created" | "writing" | "grading" | "result">("setup")
   const [selected, setSelected] = useState(topics)
   const [limit, setLimit] = useState<number | null>(30)
   const [difficulty, setDifficulty] = useState<Difficulty>("medio")
@@ -44,6 +44,8 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
     setPhase("creating")
     const created = await create(selected, count, difficulty)
     if (!created?.length) return setPhase("setup")
+    setPhase("created")
+    await settle()
     setTasks(created)
     setAnswers(created.map(() => ""))
     startedAt.current = Date.now()
@@ -92,6 +94,14 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
 
   if (phase === "result" && attempt) return <MockResult attempt={attempt} back={back} />
 
+  if (phase === "creating" || phase === "created") {
+    return (
+      <FocusShell back={back} eyebrow="Creando examen escrito" title={title}>
+        <LessonLoader done={phase === "created"} />
+      </FocusShell>
+    )
+  }
+
   return (
     <FocusShell
       back={back}
@@ -106,7 +116,7 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
             : "Configura tu examen escrito"
       }
     >
-      {(phase === "setup" || phase === "creating") && (
+      {phase === "setup" && (
         <div className="space-y-6">
           <div className="space-y-2">
             <Label>Selecciona temas</Label>
@@ -138,8 +148,8 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
           <p className="text-sm text-muted-foreground">
             Este examen tendrá <b>{count} tareas</b>.
           </p>
-          <Button size="lg" className="h-12 w-full rounded-xl text-base" disabled={selected.length === 0 || phase === "creating"} onClick={start}>
-            {phase === "creating" ? "Creando examen…" : "Crear examen escrito de práctica"}
+          <Button size="lg" className="h-12 w-full rounded-xl text-base" disabled={selected.length === 0} onClick={start}>
+            Crear examen escrito de práctica
           </Button>
         </div>
       )}

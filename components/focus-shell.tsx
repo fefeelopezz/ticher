@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
 import { ArrowLeft, X } from "lucide-react"
@@ -56,6 +57,43 @@ export function FocusShell({ back, onClose, progress, label, eyebrow, title, des
         {children}
       </main>
     </>
+  )
+}
+
+const STAGES = [
+  [0, "Leyendo tu material…"],
+  [30, "Armando la lección…"],
+  [70, "Revisando los últimos detalles…"],
+  [100, "¡Lista!"],
+] as const
+
+// Short pause so the bar is seen reaching 100 % before the lesson replaces it.
+export const settle = () => new Promise((r) => setTimeout(r, 500))
+
+// The AI sends no progress, so the percentage is an estimate: it climbs fast, slows toward 95 %
+// while waiting and jumps to 100 % once the lesson arrives (`done`).
+export function LessonLoader({ done = false }: { done?: boolean }) {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (done) return
+    const id = setInterval(() => setElapsed((ms) => ms + 100), 100)
+    return () => clearInterval(id)
+  }, [done])
+  const percent = done ? 100 : Math.max(1, Math.round(95 * (1 - Math.exp(-elapsed / 9000))))
+  const stage = STAGES.findLast(([from]) => percent >= from)![1]
+
+  return (
+    <div className="space-y-4 pt-4" role="progressbar" aria-label="Creando la lección" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+      <div className="flex items-end justify-between gap-4">
+        <p className="text-muted-foreground" aria-live="polite">
+          {stage}
+        </p>
+        <p className="text-4xl font-semibold tabular-nums">{percent}%</p>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out" style={{ width: `${percent}%` }} />
+      </div>
+    </div>
   )
 }
 
