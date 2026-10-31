@@ -31,6 +31,7 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -61,10 +62,11 @@ const ACCOUNT: NavItem[] = [
 ]
 
 function NavItems({ items, pathname }: { items: NavItem[]; pathname: string | null }) {
+  const { setOpenMobile } = useSidebar()
   return items.map(({ href, label, icon: Icon }) => (
     <SidebarMenuItem key={href}>
       <SidebarMenuButton
-        render={<Link href={href} />}
+        render={<Link href={href} onClick={() => setOpenMobile(false)} />}
         isActive={href === "/" ? pathname === "/" : !!pathname?.startsWith(href)}
       >
         <Icon />
@@ -92,6 +94,9 @@ export function AppSidebar() {
   const { resolvedTheme, setTheme } = useTheme()
   const router = useRouter()
   const [searching, setSearching] = useState(false)
+  // On mobile the sidebar is a drawer: picking a section closes it so the page shows right away.
+  const { setOpenMobile } = useSidebar()
+  const close = () => setOpenMobile(false)
   useSearchShortcut(useCallback(() => setSearching(true), []))
 
   async function logout() {
@@ -111,121 +116,135 @@ export function AppSidebar() {
   const { streak, todayMinutes, goal, goalMet } = useActivity()
 
   return (
-    <Sidebar>
+    <>
+      {/* Outside the drawer, so closing the drawer on mobile keeps the search open. */}
       <SearchDialog open={searching} onOpenChange={setSearching} />
-      <SidebarHeader className="px-4 py-5">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-wider">
-          {/* Same drawing as app/icon.svg (the favicon). */}
-          <svg viewBox="0 0 32 32" className="size-7 shrink-0" aria-hidden="true">
-            <rect width="32" height="32" rx="8" fill="#0a0a0a" className="stroke-border" strokeWidth="1" />
-            <rect x="7.5" y="7.5" width="15" height="4.5" rx="1.5" fill="#fafafa" />
-            <rect x="12.75" y="7.5" width="4.5" height="17" rx="1.5" fill="#fafafa" />
-            <circle cx="23" cy="21.5" r="2.75" fill="#ffa247" />
-          </svg>
-          <span>
-            <span className="text-primary">T</span>icher
-          </span>
-        </Link>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
-              <SidebarMenuItem>
-                <SidebarMenuButton onClick={() => setSearching(true)}>
-                  <Search />
-                  <span className="flex-1">Buscar</span>
-                  <kbd className="rounded border px-1.5 text-[10px] text-muted-foreground">Ctrl K</kbd>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <Nav items={NAV} />
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        {chats.length > 0 && (
+      <Sidebar>
+        <SidebarHeader className="px-4 py-5">
+          <Link href="/" onClick={close} className="flex items-center gap-2 text-lg font-semibold tracking-wider">
+            {/* Same drawing as app/icon.svg (the favicon). */}
+            <svg viewBox="0 0 32 32" className="size-7 shrink-0" aria-hidden="true">
+              <rect width="32" height="32" rx="8" fill="#0a0a0a" className="stroke-border" strokeWidth="1" />
+              <rect x="7.5" y="7.5" width="15" height="4.5" rx="1.5" fill="#fafafa" />
+              <rect x="12.75" y="7.5" width="4.5" height="17" rx="1.5" fill="#fafafa" />
+              <circle cx="23" cy="21.5" r="2.75" fill="#ffa247" />
+            </svg>
+            <span>
+              <span className="text-primary">T</span>icher
+            </span>
+          </Link>
+        </SidebarHeader>
+        <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Conversaciones</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
-                {[...chats]
-                  .sort((a, b) => b.updatedAt - a.updatedAt)
-                  .slice(0, 15)
-                  .map((c) => (
-                    <SidebarMenuItem key={c.id}>
-                      <SidebarMenuButton render={<Link href={`/?chat=${c.id}`} />}>
-                        <span className="truncate">{c.title}</span>
-                      </SidebarMenuButton>
-                      <SidebarMenuAction showOnHover aria-label={`Eliminar ${c.title}`} onClick={() => removeChat(c)}>
-                        <Trash2 />
-                      </SidebarMenuAction>
-                    </SidebarMenuItem>
-                  ))}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={() => {
+                      close()
+                      setSearching(true)
+                    }}
+                  >
+                    <Search />
+                    <span className="flex-1">Buscar</span>
+                    <kbd className="rounded border px-1.5 text-[10px] text-muted-foreground">Ctrl K</kbd>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <Nav items={NAV} />
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
-        )}
-      </SidebarContent>
-      <SidebarFooter>
-        {/* Daily goal: minutes today against the goal, or met by finishing a lesson. */}
-        <Link href="/activity" className="mx-2 mb-1 space-y-1.5 rounded-lg border px-3 py-2 text-xs transition-colors hover:bg-sidebar-accent">
-          <span className="flex items-center justify-between gap-2">
-            <span className="flex items-center gap-1 font-medium">
-              <Flame className={`size-3.5 ${streak ? "text-primary" : "text-muted-foreground"}`} />
-              {streak} {streak === 1 ? "día" : "días"} de racha
+          {chats.length > 0 && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Conversaciones</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1">
+                  {[...chats]
+                    .sort((a, b) => b.updatedAt - a.updatedAt)
+                    .slice(0, 15)
+                    .map((c) => (
+                      <SidebarMenuItem key={c.id}>
+                        <SidebarMenuButton render={<Link href={`/?chat=${c.id}`} onClick={close} />}>
+                          <span className="truncate">{c.title}</span>
+                        </SidebarMenuButton>
+                        <SidebarMenuAction showOnHover aria-label={`Eliminar ${c.title}`} onClick={() => removeChat(c)}>
+                          <Trash2 />
+                        </SidebarMenuAction>
+                      </SidebarMenuItem>
+                    ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+        </SidebarContent>
+        <SidebarFooter>
+          {/* Daily goal: minutes today against the goal, or met by finishing a lesson. */}
+          <Link href="/activity" onClick={close} className="mx-2 mb-1 space-y-1.5 rounded-lg border px-3 py-2 text-xs transition-colors hover:bg-sidebar-accent">
+            <span className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1 font-medium">
+                <Flame className={`size-3.5 ${streak ? "text-primary" : "text-muted-foreground"}`} />
+                {streak} {streak === 1 ? "día" : "días"} de racha
+              </span>
+              <span className="text-muted-foreground tabular-nums">{goalMet ? "Meta cumplida ✓" : `${todayMinutes}/${goal} min`}</span>
             </span>
-            <span className="text-muted-foreground tabular-nums">{goalMet ? "Meta cumplida ✓" : `${todayMinutes}/${goal} min`}</span>
-          </span>
-          <span className="block h-1 overflow-hidden rounded-full bg-muted">
-            <span className="block h-full rounded-full bg-primary" style={{ width: `${goalMet ? 100 : Math.min(100, (todayMinutes / goal) * 100)}%` }} />
-          </span>
-        </Link>
-        <SidebarMenu className="gap-1">
-          <SidebarMenuItem>
-            {/* Icons and label switch via the .dark class, so server and client markup match. */}
-            <SidebarMenuButton onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
-              <Moon className="dark:hidden" />
-              <Sun className="hidden dark:block" />
-              <span className="dark:hidden">Modo oscuro</span>
-              <span className="hidden dark:inline">Modo claro</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={logout}>
-              <LogOut />
-              <span>Cerrar sesión</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger render={<SidebarMenuButton size="lg" aria-label="Menú de tu cuenta" />}>
-                <Avatar className="size-8">
-                  {profile.photo && <AvatarImage src={profile.photo} alt="" />}
-                  <AvatarFallback>{name[0].toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <span className="flex-1 truncate text-sm">{name}</span>
-                <ChevronsUpDown className="text-muted-foreground" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" className="min-w-56">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="space-y-0.5 font-normal">
-                    <span className="block truncate text-sm font-medium text-foreground">{name}</span>
-                    <span className="block truncate">{email}</span>
-                    <span className="flex items-center gap-1 pt-1 text-foreground">
-                      <Flame className="size-3.5 text-primary" /> {streak} {streak === 1 ? "día" : "días"} de racha
-                    </span>
-                  </DropdownMenuLabel>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                {ACCOUNT.map(({ href, label, icon: Icon }) => (
-                  <DropdownMenuItem key={href} onClick={() => router.push(href)}>
-                    <Icon /> {label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+            <span className="block h-1 overflow-hidden rounded-full bg-muted">
+              <span className="block h-full rounded-full bg-primary" style={{ width: `${goalMet ? 100 : Math.min(100, (todayMinutes / goal) * 100)}%` }} />
+            </span>
+          </Link>
+          <SidebarMenu className="gap-1">
+            <SidebarMenuItem>
+              {/* Icons and label switch via the .dark class, so server and client markup match. */}
+              <SidebarMenuButton onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
+                <Moon className="dark:hidden" />
+                <Sun className="hidden dark:block" />
+                <span className="dark:hidden">Modo oscuro</span>
+                <span className="hidden dark:inline">Modo claro</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={logout}>
+                <LogOut />
+                <span>Cerrar sesión</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<SidebarMenuButton size="lg" aria-label="Menú de tu cuenta" />}>
+                  <Avatar className="size-8">
+                    {profile.photo && <AvatarImage src={profile.photo} alt="" />}
+                    <AvatarFallback>{name[0].toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <span className="flex-1 truncate text-sm">{name}</span>
+                  <ChevronsUpDown className="text-muted-foreground" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="top" className="min-w-56">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="space-y-0.5 font-normal">
+                      <span className="block truncate text-sm font-medium text-foreground">{name}</span>
+                      <span className="block truncate">{email}</span>
+                      <span className="flex items-center gap-1 pt-1 text-foreground">
+                        <Flame className="size-3.5 text-primary" /> {streak} {streak === 1 ? "día" : "días"} de racha
+                      </span>
+                    </DropdownMenuLabel>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  {ACCOUNT.map(({ href, label, icon: Icon }) => (
+                    <DropdownMenuItem
+                      key={href}
+                      onClick={() => {
+                        close()
+                        router.push(href)
+                      }}
+                    >
+                      <Icon /> {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+    </>
   )
 }
