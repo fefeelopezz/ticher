@@ -5,8 +5,8 @@ import { SESSION_COOKIE, readSession } from "@/lib/auth-core"
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const session = readSession(request.cookies.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET)
-  // The reminders cron checks its own CRON_SECRET instead of a session.
-  const isPublic = pathname === "/login" || pathname.startsWith("/api/auth/") || pathname === "/api/cron/reminders"
+  // The reminders cron checks its own CRON_SECRET instead of a session; crawlers need robots and sitemap.
+  const isPublic = ["/login", "/api/cron/reminders", "/robots.txt", "/sitemap.xml"].includes(pathname) || pathname.startsWith("/api/auth/")
 
   if (session && pathname === "/login") return NextResponse.redirect(new URL("/", request.url))
   if (session || isPublic) return NextResponse.next()

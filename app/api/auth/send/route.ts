@@ -12,10 +12,10 @@ const html = (code: string) =>
     title: "Tu código de Ticher",
     preheader: `Tu código es ${code}. Vence en ${OTP_MINUTES} minutos.`,
     body: `
-        <p style="margin:0 0 6px;font-size:20px;font-weight:600">Tu código de acceso</p>
-        <p style="margin:0 0 28px;font-size:15px;line-height:1.5;color:#57534e">Escríbelo en Ticher para iniciar sesión.</p>
-        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:20px 12px 20px 22px;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:10px">${code}</div>
-        <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#78716c">Vence en ${OTP_MINUTES} minutos. Si no lo pediste, puedes ignorar este correo.</p>`,
+        <p style="margin:0 0 6px;font-size:20px;font-weight:600;color:#fafafa">Tu código de acceso</p>
+        <p style="margin:0 0 28px;font-size:15px;line-height:1.5;color:#a3a3a3">Escríbelo en Ticher para iniciar sesión.</p>
+        <div style="background:#2a1a0a;border:1px solid #5c3a14;border-radius:12px;padding:20px 12px 20px 22px;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:10px;color:#fafafa">${code}</div>
+        <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#8a8a8a">Vence en ${OTP_MINUTES} minutos. Si no lo pediste, puedes ignorar este correo.</p>`,
   })
 
 export async function POST(request: Request) {

@@ -14,14 +14,14 @@ const reminder = (prep: ExamPrep, days: number, name: string) => {
     title: `Tu examen de ${escapeHtml(prep.subject)} es ${when(days)}`,
     preheader: `${escapeHtml(prep.name)}: vas al ${score}% de preparación.`,
     body: `
-        <p style="margin:0 0 6px;font-size:20px;font-weight:600">${name ? `${escapeHtml(name)}, tu` : "Tu"} examen es ${when(days)}</p>
-        <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#57534e">${escapeHtml(prep.name)} · ${escapeHtml(prep.subject)}</p>
-        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:16px 20px;margin:0 0 24px">
-          <p style="margin:0;font-size:28px;font-weight:700">${score}%</p>
-          <p style="margin:2px 0 0;font-size:13px;color:#78716c">de preparación · tu meta es ${prep.goal ?? 75}%</p>
+        <p style="margin:0 0 6px;font-size:20px;font-weight:600;color:#fafafa">${name ? `${escapeHtml(name)}, tu` : "Tu"} examen es ${when(days)}</p>
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#a3a3a3">${escapeHtml(prep.name)} · ${escapeHtml(prep.subject)}</p>
+        <div style="background:#2a1a0a;border:1px solid #5c3a14;border-radius:12px;padding:16px 20px;margin:0 0 24px">
+          <p style="margin:0;font-size:28px;font-weight:700;color:#ffa247">${score}%</p>
+          <p style="margin:2px 0 0;font-size:13px;color:#8a8a8a">de preparación · tu meta es ${prep.goal ?? 75}%</p>
         </div>
         ${emailButton(`https://www.ticher.pro/exams/${encodeURIComponent(prep.id)}`, "Seguir estudiando")}
-        <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#78716c">Puedes desactivar estos avisos en Ajustes.</p>`,
+        <p style="margin:24px 0 0;font-size:13px;line-height:1.5;color:#8a8a8a">Puedes desactivar estos avisos en Ajustes.</p>`,
   })
 }
 
