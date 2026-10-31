@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils"
 import { average, today, useStudyTimer, type MockTask, type Question } from "@/lib/store"
 import { applyScores, logLesson } from "@/lib/use-prep"
 import { FocusSkeleton } from "@/components/page-skeletons"
+import { useConfirm } from "@/components/confirm-dialog"
 
 const LIMITS = [30, 45, 60, 90]
 const QUESTIONS = 10
@@ -38,6 +39,7 @@ export default function FinalExamPage() {
   const [elapsed, setElapsed] = useState(0)
   const [result, setResult] = useState<Result>()
   const startedAt = useRef(0)
+  const [confirm, confirmDialog] = useConfirm()
   useStudyTimer()
 
   async function start() {
@@ -111,9 +113,12 @@ export default function FinalExamPage() {
   if (!hydrated) return <FocusSkeleton />
   if (!found || !prep) return <Missing back={back} />
 
-  function close() {
+  async function close() {
     const started = phase === "exam" || phase === "grading"
-    if (started && !window.confirm("¿Salir del examen final? Se perderán tus respuestas.")) return
+    const leave =
+      !started ||
+      (await confirm({ title: "¿Salir del examen final?", description: "Se perderán tus respuestas.", confirmLabel: "Salir", kind: "leave" }))
+    if (!leave) return
     router.push(back)
   }
 
@@ -229,6 +234,7 @@ export default function FinalExamPage() {
       eyebrow="Modo examen final"
       title={title}
     >
+      {confirmDialog}
       <div className="space-y-8">
         <p className="sticky top-14 z-10 flex items-center gap-2 bg-background py-2 text-sm font-medium">
           <Clock className="size-4" />

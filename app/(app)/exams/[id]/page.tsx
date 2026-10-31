@@ -4,9 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import {
-  ArrowDown,
   ArrowLeft,
-  ArrowUp,
   BookOpen,
   ChevronDown,
   ChevronRight,
@@ -60,6 +58,7 @@ import {
 } from "@/lib/store"
 import { allCards, same, usePrep } from "@/lib/use-prep"
 import { PrepSkeleton } from "@/components/page-skeletons"
+import { useConfirm } from "@/components/confirm-dialog"
 
 const SAVED_KINDS: Record<SavedLesson["kind"], { icon: LucideIcon; title: string }> = {
   quiz: { icon: ListChecks, title: "Opción múltiple" },
@@ -152,6 +151,7 @@ export default function PrepPage() {
   const [openTopic, setOpenTopic] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
   const [editingExam, setEditingExam] = useState<{ name: string; date: string } | null>(null)
+  const [confirm, confirmDialog] = useConfirm()
   useStudyTimer()
 
   if (!prep && !hydrated) return <PrepSkeleton />
@@ -211,16 +211,6 @@ export default function PrepPage() {
     write<CalendarEvent[]>("events", NO_EVENTS, (all) => all.map((e) => (e.prepId === id ? { ...e, title: name.trim(), date } : e)))
   }
 
-  function moveTopic(topicId: string, by: -1 | 1) {
-    update((p) => {
-      const list = [...(p.topics ?? [])]
-      const i = list.findIndex((t) => t.id === topicId)
-      if (i + by < 0 || i + by >= list.length) return p
-      ;[list[i], list[i + by]] = [list[i + by], list[i]]
-      return { ...p, topics: list }
-    })
-  }
-
   // Questions and cards point at their topic by name, so the new name is carried over to them too.
   function renameTopic({ id: topicId, name }: { id: string; name: string }) {
     const old = topics.find((t) => t.id === topicId)?.name
@@ -238,8 +228,13 @@ export default function PrepPage() {
   }
 
   // Deleting a topic also drops its reading, saved lessons and pending mistakes.
-  function removeTopic(t: Topic) {
-    if (!window.confirm(`¿Eliminar el tema "${t.name}"? Se borran su lectura y sus lecciones guardadas.`)) return
+  async function removeTopic(t: Topic) {
+    const ok = await confirm({
+      title: `¿Eliminar el tema "${t.name}"?`,
+      description: "Se borran su lectura, sus lecciones guardadas y sus errores pendientes. No se puede deshacer.",
+      confirmLabel: "Eliminar tema",
+    })
+    if (!ok) return
     setOpenTopic(null)
     update((p) => {
       const summaries = { ...p.summaries }
@@ -254,8 +249,13 @@ export default function PrepPage() {
     })
   }
 
-  function removeSaved(topicId: string, key: string) {
-    if (!window.confirm("¿Eliminar esta lección? No se puede deshacer.")) return
+  async function removeSaved(topicId: string, key: string) {
+    const ok = await confirm({
+      title: "¿Eliminar esta lección?",
+      description: "Se borra de tus lecciones guardadas junto con su resultado. No se puede deshacer.",
+      confirmLabel: "Eliminar lección",
+    })
+    if (!ok) return
     update((p) => {
       if (key !== "summary") return { ...p, savedLessons: (p.savedLessons ?? []).filter((l) => l.id !== key) }
       const summaries = { ...p.summaries }
@@ -322,6 +322,7 @@ export default function PrepPage() {
         </div>
       </div>
 
+      {confirmDialog}
       <EditDialog title="Renombrar tema" open={!!renaming} onOpenChange={(o) => !o && setRenaming(null)} onSave={() => renaming && renameTopic(renaming)}>
         {renaming && (
           <Input
@@ -446,12 +447,6 @@ export default function PrepPage() {
                       {open && (
                         <div id={`lessons-${t.id}`} className="space-y-3 px-3 pt-2 pb-3 animate-in fade-in slide-in-from-top-1">
                           <div className="flex flex-wrap items-center justify-end gap-1">
-                            <Button variant="ghost" size="icon-xs" aria-label="Subir tema" disabled={i === 0} onClick={() => moveTopic(t.id, -1)}>
-                              <ArrowUp />
-                            </Button>
-                            <Button variant="ghost" size="icon-xs" aria-label="Bajar tema" disabled={i === topics.length - 1} onClick={() => moveTopic(t.id, 1)}>
-                              <ArrowDown />
-                            </Button>
                             <Button variant="ghost" size="xs" onClick={() => setRenaming({ id: t.id, name: t.name })}>
                               <Pencil /> Renombrar
                             </Button>

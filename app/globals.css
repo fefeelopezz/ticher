@@ -128,3 +128,21 @@
     @apply font-sans;
   }
 }
+/* Printing (Exportar PDF): always light colors whatever the theme, and no page margin so the browser
+   leaves out its own header and footer (date, title, URL); the print page adds its own padding. */
+@media print {
+  :root,
+  .dark {
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.4 0 0);
+    --border: oklch(0.88 0 0);
+    color-scheme: light;
+  }
+}
+
+@page {
+  margin: 0;
+}

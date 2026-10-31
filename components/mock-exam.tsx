@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { DifficultyPicker, TopicPicker, formatTime } from "@/components/exam-practice"
 import { FocusShell, LessonLoader, settle } from "@/components/focus-shell"
+import { useConfirm } from "@/components/confirm-dialog"
 import { today, type Difficulty, type MockAttempt, type MockGrade, type MockTask } from "@/lib/store"
 
 export type Graded = { grades: MockGrade[]; score: number; strengths: string; toReview: string }
@@ -26,6 +27,8 @@ type Props = {
 
 const LIMITS: (number | null)[] = [null, 15, 30, 45, 60]
 
+const LEAVE = { title: "¿Salir del examen?", description: "Se perderán las respuestas que escribiste.", confirmLabel: "Salir", kind: "leave" } as const
+
 // Astra's "Examen Escrito Simulado": pick topics and a time limit, answer in writing, get an AI grade.
 export function MockExam({ topics, title, back, create, grade, onDone }: Props) {
   const router = useRouter()
@@ -38,6 +41,7 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
   const [elapsed, setElapsed] = useState(0)
   const [attempt, setAttempt] = useState<MockAttempt>()
   const startedAt = useRef(0)
+  const [confirm, confirmDialog] = useConfirm()
   const count = Math.min(8, Math.max(3, selected.length * 2))
 
   async function start() {
@@ -86,9 +90,10 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
     return () => clearInterval(id)
   }, [phase, limit])
 
-  function close() {
+  async function close() {
     const writing = phase === "writing" || phase === "grading"
-    if (writing && answers.some((a) => a.trim()) && !window.confirm("¿Salir del examen? Se perderán tus respuestas.")) return
+    const leave = !writing || !answers.some((a) => a.trim()) || (await confirm(LEAVE))
+    if (!leave) return
     router.push(back)
   }
 
@@ -116,6 +121,7 @@ export function MockExam({ topics, title, back, create, grade, onDone }: Props) 
             : "Configura tu examen escrito"
       }
     >
+      {confirmDialog}
       {phase === "setup" && (
         <div className="space-y-6">
           <div className="space-y-2">

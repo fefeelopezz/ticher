@@ -22,7 +22,14 @@ export default function PrintPage() {
   const cards = (prep.savedLessons ?? []).flatMap((l) => (l.kind === "cards" && l.topicId === topic.id ? l.cards : []))
 
   return (
-    <main className="mx-auto w-full max-w-[44rem] space-y-8 px-6 py-8 print:max-w-none print:px-0 print:py-0">
+    // Pages print with no margin (see globals.css), so the padding is the margin; "clone" repeats it on every sheet.
+    <main className="mx-auto w-full max-w-[44rem] space-y-8 px-6 py-8 print:max-w-none print:px-[16mm] print:py-[18mm] print:text-black print:[box-decoration-break:clone]">
+      {/* Chrome names the saved PDF after the page title. */}
+      <title>{`${topic.name} · ${prep.name}`}</title>
+      {/* Fixed elements repeat on every printed page. */}
+      <p className="fixed top-[7mm] right-[16mm] hidden text-[9px] text-foreground/40 print:block">
+        Ticher · Tu tutor de IA para estudiar y preparar exámenes
+      </p>
       <div className="flex items-center justify-between gap-2 print:hidden">
         <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={back} />}>
           <ArrowLeft /> Volver
@@ -36,7 +43,7 @@ export default function PrintPage() {
         <p className="text-xs font-semibold tracking-wide text-primary uppercase">
           {prep.subject} · {prep.name}
         </p>
-        <h1 className="font-serif text-3xl leading-tight">{topic.name}</h1>
+        <h1 className="font-serif text-3xl leading-tight print:text-black">{topic.name}</h1>
       </header>
 
       {!summary && !cards.length && (
@@ -47,7 +54,7 @@ export default function PrintPage() {
 
       {summary && (
         <section className="space-y-5">
-          <h2 className="text-lg font-semibold">{summary.title}</h2>
+          {summary.title.trim().toLowerCase() !== topic.name.trim().toLowerCase() && <h2 className="text-lg font-semibold">{summary.title}</h2>}
           <p className="leading-relaxed">{plain(summary.intro)}</p>
           {summary.sections.map((s, i) => (
             <article key={i} className="space-y-2 break-inside-avoid">
@@ -64,7 +71,8 @@ export default function PrintPage() {
                 <ol className="list-decimal space-y-1 pl-5 text-sm">
                   {s.steps.map((st, j) => (
                     <li key={j}>
-                      <b>{st.title}:</b> {plain(st.text)}
+                      {/* The list already numbers the steps; drop a number the AI put in the title. */}
+                      <b>{st.title.replace(/^\d+[.)]\s*/, "")}:</b> {plain(st.text)}
                     </li>
                   ))}
                 </ol>
