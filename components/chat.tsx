@@ -13,10 +13,12 @@ import { openMaterial, storeFiles } from "@/components/subjects-section"
 import { Whiteboard } from "@/components/whiteboard"
 import { postJson } from "@/lib/api"
 import { getFile, toPayload } from "@/lib/files"
+import { prepContext } from "@/lib/prep-context"
 import { cn } from "@/lib/utils"
 import {
   DEFAULT_PROFILE,
   NO_CHATS,
+  NO_PREPS,
   NO_SUBJECTS,
   useHydrated,
   useStored,
@@ -24,6 +26,7 @@ import {
   write,
   type Chat as ChatData,
   type ChatMessage,
+  type ExamPrep,
   type Material,
   type Profile,
   type Subject,
@@ -174,6 +177,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
   const [chats] = useStored<ChatData[]>("chats", NO_CHATS)
   const [subjects] = useStored<Subject[]>("subjects", NO_SUBJECTS)
+  const [preps] = useStored<ExamPrep[]>("preps", NO_PREPS)
   const saved = chats.find((c) => c.id === chatId)
 
   const [id, setId] = useState(chatId)
@@ -195,6 +199,8 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const chatFiles = chat?.files ?? []
   const suggestions = chat?.suggestions ?? []
   const subjectMaterials = subjects.find((s) => s.name.toLowerCase() === subject.toLowerCase())?.materials ?? []
+  // The exam preps of this subject: the tutor can answer about their lessons, smart texts and mistakes.
+  const subjectPreps = preps.filter((p) => p.subject.toLowerCase() === subject.toLowerCase())
   const name = profile.name.trim().split(" ")[0]
 
   function updateChat(chatId: string, fn: (c: ChatData) => ChatData) {
@@ -231,6 +237,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
         socratic: profile.socratic,
         messages: history,
         files: payload,
+        prep: useMaterial && subjectPreps.length ? prepContext(subjectPreps) : "",
       })
       updateChat(current, (c) => ({
         ...c,
@@ -385,19 +392,6 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
       </div>
 
       <div className="sticky bottom-4 space-y-2">
-        {subjectMaterials.length > 0 && (
-          <div className="flex flex-wrap gap-2 text-xs">
-            <button
-              type="button"
-              onClick={() => setUseMaterial(!useMaterial)}
-              aria-pressed={useMaterial}
-              className={`flex items-center gap-1 rounded-full border px-2 py-1 ${useMaterial ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-            >
-              <BookOpen className="size-3" />
-              Usar material de {subject} ({subjectMaterials.length})
-            </button>
-          </div>
-        )}
         <form
           className="group relative mt-11 flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm transition-colors focus-within:border-primary/50"
           onSubmit={(e) => {
@@ -417,6 +411,26 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
             />
             <Shoulder className="-right-3 -scale-x-100" />
           </div>
+          {/* Sits on the composer's top-left edge, level with the subject tab; on phones only icon and count fit beside it. */}
+          {(subjectMaterials.length > 0 || subjectPreps.length > 0) && (
+            <button
+              type="button"
+              onClick={() => setUseMaterial(!useMaterial)}
+              aria-pressed={useMaterial}
+              aria-label={`Usar material y preparación de ${subject}`}
+              title={`Usar material y preparación de ${subject}`}
+              className={cn(
+                "absolute bottom-full left-1 mb-1.5 flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors",
+                useMaterial ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground"
+              )}
+            >
+              <BookOpen className="size-3" />
+              <span className="hidden sm:inline">Usar material de {subject}</span>
+              <span>
+                ({[subjectMaterials.length && `${subjectMaterials.length} arch.`, subjectPreps.length && `${subjectPreps.length} examen${subjectPreps.length > 1 ? "es" : ""}`].filter(Boolean).join(" · ")})
+              </span>
+            </button>
+          )}
           {/* Attached but not sent yet: inside the composer, so they read as part of the message. */}
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-3 px-1 pt-1">

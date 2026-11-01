@@ -13,6 +13,8 @@ const Body = z.object({
     // zod v4 still runs refine after min(1) fails, so guard the empty array.
     .refine((m) => m[0]?.role === "user" && m.at(-1)?.role === "user", "Conversation must start and end with the student"),
   files: z.array(FileSchema).max(20).default([]),
+  // The student's exam preps for this subject as text (lib/prep-context.ts).
+  prep: z.string().max(70_000).default(""),
 })
 
 const Reply = z.object({
@@ -25,7 +27,7 @@ export async function POST(request: Request) {
   if (!(await getSession())) return unauthorized()
   const body = Body.safeParse(await request.json().catch(() => null))
   if (!body.success) return Response.json({ error: "Mensaje inválido." }, { status: 400 })
-  const { subject, name, socratic, messages, files } = body.data
+  const { subject, name, socratic, messages, files, prep } = body.data
   if (tooLarge(files)) return Response.json({ error: "Los archivos son demasiado grandes para enviarlos juntos." }, { status: 413 })
 
   const system = [
@@ -38,6 +40,8 @@ export async function POST(request: Request) {
     socratic
       ? "Modo socrático: nunca des la respuesta final; guía con preguntas y pistas paso a paso."
       : "Explica paso a paso y comprueba que el estudiante entendió.",
+    prep &&
+      `Esta es la preparación de examen que el estudiante armó en Ticher para esta materia (temas, textos inteligentes, lecciones guardadas, errores y notas). Si pregunta por sus lecciones, un texto inteligente, un tema o cómo le fue, respóndele con estos datos y nómbralos como aparecen; no inventes lo que no está.\n\n${prep}`,
   ]
     .filter(Boolean)
     .join(" ")
