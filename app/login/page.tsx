@@ -46,7 +46,7 @@ const ES = {
   resendIn: (s: number) => `Enviar un nuevo código en ${s}s`,
   resend: "Enviar un nuevo código",
   start: "Empezar",
-  terms: "Al continuar, aceptas los Términos de uso y la Política de privacidad.",
+  terms: ["Al continuar, aceptas los ", "Términos de uso", " y la ", "Política de privacidad", "."],
 }
 
 const EN: typeof ES = {
@@ -77,7 +77,8 @@ const EN: typeof ES = {
   resendIn: (s: number) => `Send a new code in ${s}s`,
   resend: "Send a new code",
   start: "Get started",
-  terms: "By continuing, you accept the Terms of use and the Privacy policy.",
+  // The legal pages themselves are in Spanish.
+  terms: ["By continuing, you accept the ", "Terms of use", " and the ", "Privacy policy", "."],
 }
 
 const TEXT: Record<Lang, typeof ES> = { es: ES, en: EN }
@@ -328,7 +329,17 @@ function Login() {
           </form>
         )}
 
-        <p className="text-center text-xs text-muted-foreground">{t.terms}</p>
+        <p className="text-center text-xs text-muted-foreground">
+          {t.terms[0]}
+          <Link href="/terminos" className="underline underline-offset-2 hover:text-foreground">
+            {t.terms[1]}
+          </Link>
+          {t.terms[2]}
+          <Link href="/privacidad" className="underline underline-offset-2 hover:text-foreground">
+            {t.terms[3]}
+          </Link>
+          {t.terms[4]}
+        </p>
       </div>
     </main>
   )

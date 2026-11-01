@@ -8,7 +8,7 @@ export function proxy(request: NextRequest) {
   // The reminders cron checks its own CRON_SECRET instead of a session; crawlers need robots and sitemap;
   // visitors on the landing can send feedback too.
   const isPublic =
-    ["/login", "/welcome", "/api/cron/reminders", "/api/feedback", "/robots.txt", "/sitemap.xml"].includes(pathname) || pathname.startsWith("/api/auth/")
+    ["/login", "/welcome", "/terminos", "/privacidad", "/api/cron/reminders", "/api/feedback", "/robots.txt", "/sitemap.xml"].includes(pathname) || pathname.startsWith("/api/auth/")
 
   if (session && pathname === "/login") return NextResponse.redirect(new URL("/", request.url))
   // Same URL, two pages: the landing for visitors, the app (Preguntar) once signed in.

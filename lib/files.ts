@@ -1,7 +1,8 @@
 "use client"
 
-// Study files are too large for localStorage, so their bytes live in IndexedDB keyed by material id.
-// shortcut: files stay in this browser only, move to object storage once there are real accounts.
+// Study files are too large for localStorage, so their bytes live in IndexedDB keyed by material id,
+// with a copy in the cloud (app/api/files): uploads run in the background, and a file missing here
+// (another device, cleared browser) is fetched from the cloud, so notes follow the student around.
 function open() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open("ticher", 1)
@@ -20,15 +21,64 @@ async function run<T>(mode: IDBTransactionMode, op: (store: IDBObjectStore) => I
   })
 }
 
-export const saveFile = (id: string, file: Blob) => run("readwrite", (s) => s.put(file, id))
-export const getFile = (id: string) => run<Blob | undefined>("readonly", (s) => s.get(id))
+// Asks our server to sign a cloud operation; null when signed out, Supabase isn't set up, or it failed.
+async function cloud<T>(body: object): Promise<T | null> {
+  const res = await fetch("/api/files", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+  if (!res.ok) return null
+  const data = await res.json()
+  return data.enabled ? (data as T) : null
+}
+
+// The bytes go straight to Supabase with the signed URL, not through our server.
+async function upload(key: string, blob: Blob) {
+  const signed = await cloud<{ url: string }>({ action: "upload", key })
+  if (!signed) return
+  await fetch(signed.url, { method: "PUT", headers: { "Content-Type": blob.type || "application/octet-stream", "x-upsert": "true" }, body: blob })
+}
+
+export async function saveFile(id: string, file: Blob) {
+  await run("readwrite", (s) => s.put(file, id))
+  // Doesn't hold up the student; an upload that fails is retried by backupFiles on a later visit.
+  upload(id, file).catch(() => {})
+}
+
+export async function getFile(id: string) {
+  const local = await run<Blob | undefined>("readonly", (s) => s.get(id))
+  if (local) return local
+  const signed = await cloud<{ url: string | null }>({ action: "download", key: id }).catch(() => null)
+  if (!signed?.url) return undefined
+  const res = await fetch(signed.url)
+  if (!res.ok) return undefined
+  const blob = await res.blob()
+  // Keep it here too, so it's downloaded once per device.
+  await run("readwrite", (s) => s.put(blob, id)).catch(() => {})
+  return blob
+}
+
 // A PDF's Markdown copy is stored beside it under its own key.
 export const mdKey = (id: string) => `${id}.md`
 
-// Also drops the Markdown copy, if the file had one, so nothing is left orphaned.
+// Also drops the Markdown copy, if the file had one, so nothing is left orphaned (here or in the cloud).
 export const deleteFile = async (id: string) => {
   await run("readwrite", (s) => s.delete(id))
   await run("readwrite", (s) => s.delete(mdKey(id)))
+  cloud({ action: "delete", keys: [id, mdKey(id)] }).catch(() => {})
+}
+
+// Uploads this user's local files that the cloud doesn't have yet (saved before cloud storage existed,
+// or while offline). Only ids from the user's own data: IndexedDB is shared by every account on this browser.
+// shortcut: the cloud listing stops at 1000 files per user; page through it if anyone gets there.
+export async function backupFiles(ids: string[]) {
+  const res = await fetch("/api/files")
+  if (!res.ok) return
+  const data = await res.json()
+  if (!data.enabled) return
+  const inCloud = new Set<string>(data.keys)
+  for (const key of ids.flatMap((id) => [id, mdKey(id)])) {
+    if (inCloud.has(key)) continue
+    const blob = await run<Blob | undefined>("readonly", (s) => s.get(key)).catch(() => undefined)
+    if (blob) await upload(key, blob).catch(() => {})
+  }
 }
 
 type Sendable = { id: string; name: string; type: string; markdown?: number }

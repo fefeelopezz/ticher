@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { SubjectSelect } from "@/components/subject-select"
+import { MathText } from "@/components/math-text"
 import { openMaterial, storeFiles } from "@/components/subjects-section"
 import { Whiteboard } from "@/components/whiteboard"
 import { postJson } from "@/lib/api"
@@ -80,7 +81,8 @@ function TypedText({ text, onDone }: { text: string; onDone: () => void }) {
   }, [shown, done, text.length])
   return (
     <>
-      {text.slice(0, shown)}
+      {/* A formula still being typed (no closing delimiter yet) shows as text until it's complete. */}
+      <MathText text={text.slice(0, shown)} />
       {!done && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-primary align-middle" aria-hidden />}
     </>
   )
@@ -429,7 +431,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
                     }}
                   />
                 ) : (
-                  m.content
+                  <MathText text={m.content} />
                 )}
               </div>
             )

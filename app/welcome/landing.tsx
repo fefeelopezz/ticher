@@ -83,7 +83,7 @@ const ES = {
     ],
   },
   final: { title: "Todo lo que necesitas para aprobar.", lead: "Mejores notas en menos tiempo." },
-  footer: { tagline: "Tu tutor de IA para estudiar y preparar exámenes.", rights: "Todos los derechos reservados." },
+  footer: { tagline: "Tu tutor de IA para estudiar y preparar exámenes.", rights: "Todos los derechos reservados.", terms: "Términos", privacy: "Privacidad" },
 }
 
 const EN: typeof ES = {
@@ -137,7 +137,7 @@ const EN: typeof ES = {
     ],
   },
   final: { title: "Everything you need to pass.", lead: "Better grades in less time." },
-  footer: { tagline: "Your AI tutor for studying and exam prep.", rights: "All rights reserved." },
+  footer: { tagline: "Your AI tutor for studying and exam prep.", rights: "All rights reserved.", terms: "Terms", privacy: "Privacy" },
 }
 
 const TEXT: Record<Lang, typeof ES> = { es: ES, en: EN }
@@ -377,6 +377,12 @@ export function Landing() {
             </Link>
             <Link href={REGISTER} className="hover:text-foreground">
               {t.nav.register}
+            </Link>
+            <Link href="/terminos" className="hover:text-foreground">
+              {t.footer.terms}
+            </Link>
+            <Link href="/privacidad" className="hover:text-foreground">
+              {t.footer.privacy}
             </Link>
             <span>© 2026 Ticher. {t.footer.rights}</span>
           </div>

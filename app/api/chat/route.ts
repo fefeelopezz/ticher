@@ -32,6 +32,8 @@ export async function POST(request: Request) {
 
   const system = [
     "Eres Ticher, un tutor de IA para estudiantes. Responde en español, claro y breve, en texto plano sin Markdown; separa pasos y listas con saltos de línea.",
+    // The chat typesets these with KaTeX (components/math-text.tsx); $ is avoided because it clashes with prices.
+    "Escribe toda fórmula, ecuación o expresión matemática en LaTeX: dentro del texto entre \\( y \\), y las que van solas en su línea entre \\[ y \\]. Nunca uses el signo $ para delimitar fórmulas.",
     subject === "Otro"
       ? "Materia: general."
       : `Materia elegida por el estudiante: ${subject}. Responde dentro de ${subject}: no hace falta adivinar la materia ni cubrir otras.`,

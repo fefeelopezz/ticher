@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useCallback, useState } from "react"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
@@ -47,8 +47,8 @@ import { DevNotice } from "@/components/dev-notice"
 import { Logo } from "@/components/logo"
 import { SearchDialog, useSearchShortcut } from "@/components/search-dialog"
 import { postJson } from "@/lib/api"
-import { deleteFile } from "@/lib/files"
-import { DEFAULT_PROFILE, NO_CHATS, useActivity, useEmail, useStored, type Chat, type Profile } from "@/lib/store"
+import { backupFiles, deleteFile } from "@/lib/files"
+import { DEFAULT_PROFILE, NO_CHATS, NO_SUBJECTS, useActivity, useEmail, useHydrated, useStored, type Chat, type Profile, type Subject } from "@/lib/store"
 
 type NavItem = { href: string; label: string; icon: LucideIcon }
 
@@ -113,6 +113,17 @@ export function AppSidebar() {
     chat.files.forEach((f) => deleteFile(f.id).catch(() => {}))
     setChats((all) => all.filter((c) => c.id !== chat.id))
   }
+  const [subjects] = useStored<Subject[]>("subjects", NO_SUBJECTS)
+  const hydrated = useHydrated()
+  const backedUp = useRef(false)
+  // Once per visit, a few seconds in: copy to the cloud any of this user's files that only live in this browser.
+  useEffect(() => {
+    if (!hydrated || backedUp.current) return
+    backedUp.current = true
+    const ids = [...subjects.flatMap((s) => s.materials.map((m) => m.id)), ...chats.flatMap((c) => c.files.map((f) => f.id))]
+    // No cleanup on purpose: the cloud pull changes subjects/chats right after load, which would cancel it.
+    setTimeout(() => backupFiles([...new Set(ids)]).catch(() => {}), 4000)
+  }, [hydrated, subjects, chats])
   const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
   const name = profile.name || "Estudiante"
   const email = useEmail()
