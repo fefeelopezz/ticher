@@ -171,6 +171,7 @@ export const NO_PREPS: ExamPrep[] = []
 export const NO_EVENTS: CalendarEvent[] = []
 export const NO_LESSONS: string[] = []
 export const DEFAULT_PROFILE: Profile = { name: "", level: "Preparatoria", socratic: false }
+export const LEVELS = ["Primaria", "Secundaria", "Preparatoria", "Universidad", "Otro"]
 
 // Each signed-in user gets their own slice of localStorage, keyed by the readable ticher_user cookie.
 // The cookie only separates data on a shared browser; access control is the httpOnly session cookie.

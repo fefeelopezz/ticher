@@ -10,12 +10,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DEFAULT_DAILY_GOAL, DEFAULT_PROFILE, useActivity, useEmail, useHydrated, useStored, type Profile } from "@/lib/store"
+import { DEFAULT_DAILY_GOAL, DEFAULT_PROFILE, LEVELS, useActivity, useEmail, useHydrated, useStored, type Profile } from "@/lib/store"
 import { SettingsSkeleton } from "@/components/page-skeletons"
 import { toAvatar } from "@/lib/avatar"
 
 const DAILY_GOALS = [10, 20, 30, 45, 60]
-const LEVELS = ["Primaria", "Secundaria", "Preparatoria", "Universidad", "Otro"]
 
 export default function SettingsPage() {
   const hydrated = useHydrated()
