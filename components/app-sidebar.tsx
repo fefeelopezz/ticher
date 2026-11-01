@@ -43,6 +43,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { DevNotice } from "@/components/dev-notice"
 import { Logo } from "@/components/logo"
 import { SearchDialog, useSearchShortcut } from "@/components/search-dialog"
 import { postJson } from "@/lib/api"
@@ -170,6 +171,7 @@ export function AppSidebar() {
           )}
         </SidebarContent>
         <SidebarFooter>
+          <DevNotice variant="card" />
           {/* Daily goal: minutes today against the goal, or met by finishing a lesson. */}
           <Link href="/activity" onClick={close} className="mx-2 mb-1 space-y-1.5 rounded-lg border px-3 py-2 text-xs transition-colors hover:bg-sidebar-accent">
             <span className="flex items-center justify-between gap-2">

@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DevNotice } from "@/components/dev-notice"
 import { LangSwitch } from "@/components/lang-switch"
 import { Logo } from "@/components/logo"
 import { ScoreRing } from "@/components/question-card"
@@ -175,6 +176,7 @@ export function Landing() {
   return (
     // Always dark, like the share image and the emails.
     <div ref={root} className="dark flex flex-1 flex-col bg-background text-foreground">
+      <DevNotice variant="banner" lang={lang} />
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
           <Link href="/" aria-label="Ticher">

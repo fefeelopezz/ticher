@@ -5,8 +5,10 @@ import { SESSION_COOKIE, readSession } from "@/lib/auth-core"
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const session = readSession(request.cookies.get(SESSION_COOKIE)?.value, process.env.AUTH_SECRET)
-  // The reminders cron checks its own CRON_SECRET instead of a session; crawlers need robots and sitemap.
-  const isPublic = ["/login", "/welcome", "/api/cron/reminders", "/robots.txt", "/sitemap.xml"].includes(pathname) || pathname.startsWith("/api/auth/")
+  // The reminders cron checks its own CRON_SECRET instead of a session; crawlers need robots and sitemap;
+  // visitors on the landing can send feedback too.
+  const isPublic =
+    ["/login", "/welcome", "/api/cron/reminders", "/api/feedback", "/robots.txt", "/sitemap.xml"].includes(pathname) || pathname.startsWith("/api/auth/")
 
   if (session && pathname === "/login") return NextResponse.redirect(new URL("/", request.url))
   // Same URL, two pages: the landing for visitors, the app (Preguntar) once signed in.
