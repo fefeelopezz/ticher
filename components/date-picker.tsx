@@ -43,7 +43,7 @@ export function DatePicker({ id, value, onChange, min, placeholder = "Elige una 
         >
           <CalendarDays className="text-muted-foreground" />
           {selected ? (
-            <span className="first-letter:uppercase">
+            <span className="min-w-0 truncate first-letter:uppercase">
               {selected.toLocaleDateString("es", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             </span>
           ) : (
