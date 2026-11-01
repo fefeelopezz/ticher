@@ -225,7 +225,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
     try {
       const { files: payload, skipped } = await toPayload([...chatFiles, ...sent, ...(useMaterial ? subjectMaterials : [])])
       if (skipped.length) toast.info(`No se enviaron a la IA: ${skipped.join(", ")} (formato no compatible o muy grande).`)
-      const data = await postJson<{ reply: string; suggestions: string[] }>("/api/chat", {
+      const data = await postJson<{ reply: string; suggestions: string[]; title?: string }>("/api/chat", {
         subject,
         name: profile.name,
         socratic: profile.socratic,
@@ -234,6 +234,8 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
       })
       updateChat(current, (c) => ({
         ...c,
+        // The AI re-summarizes the whole conversation on every reply, so the sidebar name follows the topic.
+        title: data.title || c.title,
         messages: [...c.messages, { role: "assistant", content: data.reply }],
         suggestions: data.suggestions,
         updatedAt: Date.now(),

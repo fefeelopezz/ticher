@@ -18,6 +18,7 @@ const Body = z.object({
 const Reply = z.object({
   reply: z.string().describe("Respuesta para el estudiante, en español. Cada paso, punto de lista o párrafo va en su propia línea (separados con \\n)."),
   suggestions: z.array(z.string()).describe("Hasta 3 preguntas cortas de seguimiento que el estudiante podría hacer"),
+  title: z.string().describe("Título de 3 a 6 palabras que resuma de qué trata toda la conversación, sin comillas ni punto final"),
 })
 
 export async function POST(request: Request) {
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
         parts: i === 0 ? [...fileParts(files), { text: m.content }] : [{ text: m.content }],
       }))
     )
-    return Response.json({ reply: result.reply, suggestions: result.suggestions.slice(0, 3) })
+    return Response.json({ reply: result.reply, suggestions: result.suggestions.slice(0, 3), title: result.title.trim().slice(0, 60) })
   } catch (error) {
     return aiErrorResponse(error)
   }
