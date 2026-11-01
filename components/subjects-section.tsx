@@ -5,6 +5,7 @@ import { Camera, FileText, Trash2, Upload } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { toWebp } from "@/lib/avatar"
 import { deleteFile, getFile, mdKey, saveFile } from "@/lib/files"
 import { convertPdf } from "@/lib/pdf"
 import { NO_SUBJECTS, useStored, type Material, type Subject } from "@/lib/store"
@@ -19,7 +20,9 @@ export const formatSize = (b: number) => (b < 1024 * 1024 ? `${Math.ceil(b / 102
 // The file input's `accept` is only a hint (drag-and-drop bypasses it), so type and size are checked here.
 export async function storeFiles(files: File[]) {
   const stored: Material[] = []
-  for (const f of files) {
+  for (const original of files) {
+    // Images shrink to WebP before the size check, so a big phone photo still fits.
+    const f = isAllowed(original) ? await toWebp(original) : original
     if (!isAllowed(f)) {
       toast.error(`${f.name}: formato no compatible`)
     } else if (f.size > MAX_MB * 1024 * 1024) {

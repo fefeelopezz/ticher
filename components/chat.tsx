@@ -10,8 +10,9 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Textarea } from "@/components/ui/textarea"
 import { SubjectSelect } from "@/components/subject-select"
 import { openMaterial, storeFiles } from "@/components/subjects-section"
+import { Whiteboard } from "@/components/whiteboard"
 import { postJson } from "@/lib/api"
-import { toPayload } from "@/lib/files"
+import { getFile, toPayload } from "@/lib/files"
 import { cn } from "@/lib/utils"
 import {
   DEFAULT_PROFILE,
@@ -96,6 +97,78 @@ function Shoulder({ className }: { className: string }) {
   )
 }
 
+// Attached images are shown from their bytes in IndexedDB; other files show as a named chip.
+function useFileUrl(id: string, isImage: boolean) {
+  const [url, setUrl] = useState<string>()
+  useEffect(() => {
+    if (!isImage) return
+    let live = true
+    let made: string | undefined
+    getFile(id)
+      .then((blob) => {
+        if (!blob || !live) return
+        made = URL.createObjectURL(blob)
+        setUrl(made)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+      if (made) URL.revokeObjectURL(made)
+    }
+  }, [id, isImage])
+  return url
+}
+
+function Attachment({ file, size, onRemove }: { file: Material; size: "thumb" | "full"; onRemove?: () => void }) {
+  const isImage = file.type.startsWith("image/")
+  const url = useFileUrl(file.id, isImage)
+  const remove = onRemove && (
+    <button
+      type="button"
+      aria-label={`Quitar ${file.name}`}
+      onClick={onRemove}
+      className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:text-foreground"
+    >
+      <X className="size-3" />
+    </button>
+  )
+  if (isImage) {
+    return (
+      <span className="relative inline-flex">
+        {/* Orange marks what's about to be sent; once in the conversation it's a plain bordered picture. */}
+        <button
+          type="button"
+          onClick={() => openMaterial(file)}
+          title={file.name}
+          className={cn("overflow-hidden rounded-xl bg-muted", size === "thumb" ? "border-2 border-primary/70" : "border")}
+        >
+          {url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- local blob URL, next/image can't optimize it
+            <img src={url} alt={file.name} className={size === "thumb" ? "size-16 object-cover" : "max-h-40 w-auto max-w-60 object-contain"} />
+          ) : (
+            <span className={cn("block animate-pulse", size === "thumb" ? "size-16" : "h-32 w-48")} />
+          )}
+        </button>
+        {remove}
+      </span>
+    )
+  }
+  return (
+    <span
+      className={cn(
+        "relative inline-flex items-center gap-1 rounded-xl bg-background px-2.5 py-1.5 text-xs",
+        size === "thumb" ? "border-2 border-primary/70" : "border"
+      )}
+    >
+      <Paperclip className="size-3 shrink-0 text-primary" />
+      <button type="button" className="max-w-40 truncate hover:underline" onClick={() => openMaterial(file)}>
+        {file.name}
+      </button>
+      {remove}
+    </span>
+  )
+}
+
 export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const router = useRouter()
   const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
@@ -119,7 +192,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
 
   const chat = chats.find((c) => c.id === id)
   const messages = chat?.messages ?? []
-  const files = chat?.files ?? pendingFiles
+  const chatFiles = chat?.files ?? []
   const suggestions = chat?.suggestions ?? []
   const subjectMaterials = subjects.find((s) => s.name.toLowerCase() === subject.toLowerCase())?.materials ?? []
   const name = profile.name.trim().split(" ")[0]
@@ -130,25 +203,27 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
 
   async function send(text = input.trim()) {
     if (!text || thinking) return
-    const userMessage: ChatMessage = { role: "user", content: text }
+    // What's in the composer goes with this message; the AI keeps seeing every file of the conversation.
+    const sent = pendingFiles
+    const userMessage: ChatMessage = { role: "user", content: text, ...(sent.length && { files: sent.map((f) => f.id) }) }
     const history = [...messages, userMessage]
     let current = id
     if (!current) {
       const newId = crypto.randomUUID()
       current = newId
       write<ChatData[]>("chats", NO_CHATS, (all) => [
-        { id: newId, title: text.slice(0, 60), subject, messages: history, files: pendingFiles, updatedAt: Date.now() },
+        { id: newId, title: text.slice(0, 60), subject, messages: history, files: sent, updatedAt: Date.now() },
         ...all,
       ])
       setId(current)
-      setPendingFiles([])
     } else {
-      updateChat(current, (c) => ({ ...c, subject, messages: history, suggestions: [], updatedAt: Date.now() }))
+      updateChat(current, (c) => ({ ...c, subject, messages: history, files: [...c.files, ...sent], suggestions: [], updatedAt: Date.now() }))
     }
+    setPendingFiles([])
     setInput("")
     setThinking(true)
     try {
-      const { files: payload, skipped } = await toPayload([...files, ...(useMaterial ? subjectMaterials : [])])
+      const { files: payload, skipped } = await toPayload([...chatFiles, ...sent, ...(useMaterial ? subjectMaterials : [])])
       if (skipped.length) toast.info(`No se enviaron a la IA: ${skipped.join(", ")} (formato no compatible o muy grande).`)
       const data = await postJson<{ reply: string; suggestions: string[] }>("/api/chat", {
         subject,
@@ -165,15 +240,20 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
       }))
       setTyping(history.length)
     } catch (e) {
-      // Drop the unanswered question (and a chat it would leave empty); put it back in the box to retry.
+      // Drop the unanswered question (and a chat it would leave empty); put it and its files back in the box to retry.
       const failed = current
+      const sentIds = new Set(sent.map((f) => f.id))
       write<ChatData[]>("chats", NO_CHATS, (all) =>
-        all.flatMap((c) => (c.id !== failed ? [c] : c.messages.length > 1 ? [{ ...c, messages: c.messages.slice(0, -1) }] : []))
+        all.flatMap((c) =>
+          c.id !== failed
+            ? [c]
+            : c.messages.length > 1
+              ? [{ ...c, messages: c.messages.slice(0, -1), files: c.files.filter((f) => !sentIds.has(f.id)) }]
+              : []
+        )
       )
-      if (messages.length === 0) {
-        setId(chatId)
-        setPendingFiles(files)
-      }
+      if (messages.length === 0) setId(chatId)
+      setPendingFiles(sent)
       setInput(text)
       toast.error((e as Error).message)
     } finally {
@@ -183,9 +263,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
 
   async function attach(list: File[]) {
     const stored = await storeFiles(list)
-    if (!stored.length) return
-    if (id) updateChat(id, (c) => ({ ...c, files: [...c.files, ...stored] }))
-    else setPendingFiles([...pendingFiles, ...stored])
+    if (stored.length) setPendingFiles((p) => [...p, ...stored])
   }
 
   function dictate() {
@@ -251,30 +329,40 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
             </div>
           </div>
         ) : (
-          messages.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                "animate-in fade-in motion-safe:slide-in-from-bottom-1 duration-300",
-                m.role === "user"
-                  ? "ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2"
-                  : "max-w-full whitespace-pre-wrap leading-relaxed"
-              )}
-            >
-              {m.role === "assistant" && i === typing ? (
-                <TypedText
-                  text={m.content}
-                  onDone={() => {
-                    setTyping(null)
-                    // Swap to the conversation URL only after the reply finished writing (it remounts the chat).
-                    if (!chatId && id) router.replace(`/?chat=${id}`, { scroll: false })
-                  }}
-                />
-              ) : (
-                m.content
-              )}
-            </div>
-          ))
+          messages.map((m, i) => {
+            const attached = (m.files ?? []).flatMap((fid) => chatFiles.filter((f) => f.id === fid))
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "animate-in fade-in motion-safe:slide-in-from-bottom-1 duration-300",
+                  m.role === "user" ? "ml-auto flex max-w-[85%] flex-col items-end gap-2" : "max-w-full whitespace-pre-wrap leading-relaxed"
+                )}
+              >
+                {attached.length > 0 && (
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {attached.map((f) => (
+                      <Attachment key={f.id} file={f} size="full" />
+                    ))}
+                  </div>
+                )}
+                {m.role === "user" ? (
+                  <span className="whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2">{m.content}</span>
+                ) : i === typing ? (
+                  <TypedText
+                    text={m.content}
+                    onDone={() => {
+                      setTyping(null)
+                      // Swap to the conversation URL only after the reply finished writing (it remounts the chat).
+                      if (!chatId && id) router.replace(`/?chat=${id}`, { scroll: false })
+                    }}
+                  />
+                ) : (
+                  m.content
+                )}
+              </div>
+            )
+          })
         )}
         {thinking && (
           <div className="flex items-center gap-1.5 py-2" role="status" aria-label="Pensando">
@@ -295,39 +383,21 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
       </div>
 
       <div className="sticky bottom-4 space-y-2">
-        {(files.length > 0 || subjectMaterials.length > 0) && (
+        {subjectMaterials.length > 0 && (
           <div className="flex flex-wrap gap-2 text-xs">
-            {subjectMaterials.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setUseMaterial(!useMaterial)}
-                aria-pressed={useMaterial}
-                className={`flex items-center gap-1 rounded-full border px-2 py-1 ${useMaterial ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              >
-                <BookOpen className="size-3" />
-                Usar material de {subject} ({subjectMaterials.length})
-              </button>
-            )}
-            {files.map((f) => (
-              <span key={f.id} className="flex items-center gap-1 rounded-full border bg-background px-2 py-1">
-                <button type="button" className="max-w-40 truncate hover:underline" onClick={() => openMaterial(f)}>
-                  {f.name}
-                </button>
-                {!id && (
-                  <button
-                    type="button"
-                    aria-label={`Quitar ${f.name}`}
-                    onClick={() => setPendingFiles(pendingFiles.filter((p) => p.id !== f.id))}
-                  >
-                    <X className="size-3" />
-                  </button>
-                )}
-              </span>
-            ))}
+            <button
+              type="button"
+              onClick={() => setUseMaterial(!useMaterial)}
+              aria-pressed={useMaterial}
+              className={`flex items-center gap-1 rounded-full border px-2 py-1 ${useMaterial ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+            >
+              <BookOpen className="size-3" />
+              Usar material de {subject} ({subjectMaterials.length})
+            </button>
           </div>
         )}
         <form
-          className="group relative mt-11 flex items-center gap-1 rounded-2xl border bg-background p-2 shadow-sm transition-colors focus-within:border-primary/50"
+          className="group relative mt-11 flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm transition-colors focus-within:border-primary/50"
           onSubmit={(e) => {
             e.preventDefault()
             send()
@@ -345,50 +415,61 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
             />
             <Shoulder className="-right-3 -scale-x-100" />
           </div>
-          <Button type="button" variant="ghost" size="icon" aria-label="Adjuntar foto o archivo" onClick={() => fileInput.current?.click()}>
-            <Paperclip />
-          </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            accept={ATTACH_ACCEPT}
-            className="hidden"
-            onChange={(e) => {
-              attach([...(e.target.files ?? [])])
-              e.target.value = ""
-            }}
-          />
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault()
-                send()
-              }
-            }}
-            placeholder="Pregunta o sube una foto del ejercicio…"
-            aria-label="Mensaje"
-            maxLength={4000}
-            // The composer box is the field; the textarea itself stays transparent so icons line up on one axis.
-            className="max-h-40 min-h-9 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0 dark:bg-transparent"
-          />
-          {canDictate && (
-            <Button
-              type="button"
-              variant={listening ? "secondary" : "ghost"}
-              size="icon"
-              aria-label="Dictar"
-              aria-pressed={listening}
-              onClick={dictate}
-            >
-              <Mic className={listening ? "animate-pulse" : ""} />
-            </Button>
+          {/* Attached but not sent yet: inside the composer, so they read as part of the message. */}
+          {pendingFiles.length > 0 && (
+            <div className="flex flex-wrap gap-3 px-1 pt-1">
+              {pendingFiles.map((f) => (
+                <Attachment key={f.id} file={f} size="thumb" onRemove={() => setPendingFiles((p) => p.filter((x) => x.id !== f.id))} />
+              ))}
+            </div>
           )}
-          <Button type="submit" size="icon" disabled={!input.trim() || thinking} aria-label="Enviar">
-            <ArrowUp />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button type="button" variant="ghost" size="icon" aria-label="Adjuntar foto o archivo" onClick={() => fileInput.current?.click()}>
+              <Paperclip />
+            </Button>
+            <Whiteboard onDone={(file) => attach([file])} />
+            <input
+              ref={fileInput}
+              type="file"
+              multiple
+              accept={ATTACH_ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                attach([...(e.target.files ?? [])])
+                e.target.value = ""
+              }}
+            />
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  send()
+                }
+              }}
+              placeholder="Pregunta o sube una foto del ejercicio…"
+              aria-label="Mensaje"
+              maxLength={4000}
+              // The composer box is the field; the textarea itself stays transparent so icons line up on one axis.
+              className="max-h-40 min-h-9 resize-none border-0 bg-transparent px-2 py-2 shadow-none focus-visible:ring-0 dark:bg-transparent"
+            />
+            {canDictate && (
+              <Button
+                type="button"
+                variant={listening ? "secondary" : "ghost"}
+                size="icon"
+                aria-label="Dictar"
+                aria-pressed={listening}
+                onClick={dictate}
+              >
+                <Mic className={listening ? "animate-pulse" : ""} />
+              </Button>
+            )}
+            <Button type="submit" size="icon" disabled={!input.trim() || thinking} aria-label="Enviar">
+              <ArrowUp />
+            </Button>
+          </div>
         </form>
       </div>
     </div>

@@ -121,7 +121,8 @@ export type CalendarEvent = {
   prepId?: string
 }
 
-export type ChatMessage = { role: "user" | "assistant"; content: string }
+// files: ids (in Chat.files) of what was attached when this message was sent, shown above it.
+export type ChatMessage = { role: "user" | "assistant"; content: string; files?: string[] }
 
 export type Chat = {
   id: string
