@@ -69,6 +69,7 @@ function NavItems({ items, pathname }: { items: NavItem[]; pathname: string | nu
     <SidebarMenuItem key={href}>
       <SidebarMenuButton
         render={<Link href={href} onClick={() => setOpenMobile(false)} />}
+        tooltip={label}
         isActive={href === "/" ? pathname === "/" : !!pathname?.startsWith(href)}
       >
         <Icon />
@@ -121,10 +122,11 @@ export function AppSidebar() {
     <>
       {/* Outside the drawer, so closing the drawer on mobile keeps the search open. */}
       <SearchDialog open={searching} onOpenChange={setSearching} />
-      <Sidebar>
-        <SidebarHeader className="px-4 py-5">
-          <Link href="/" onClick={close}>
-            <Logo />
+      {/* Closing it on desktop leaves an icon rail instead of hiding it; the wide-only parts hide in that mode. */}
+      <Sidebar collapsible="icon">
+        <SidebarHeader className="px-4 py-5 transition-[padding] group-data-[collapsible=icon]:px-2.5">
+          <Link href="/" onClick={close} aria-label="Ticher">
+            <Logo className="group-data-[collapsible=icon]:[&>span]:hidden" />
           </Link>
         </SidebarHeader>
         <SidebarContent>
@@ -133,6 +135,7 @@ export function AppSidebar() {
               <SidebarMenu className="gap-1">
                 <SidebarMenuItem>
                   <SidebarMenuButton
+                    tooltip="Buscar (Ctrl K)"
                     onClick={() => {
                       close()
                       setSearching(true)
@@ -148,7 +151,7 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
           {chats.length > 0 && (
-            <SidebarGroup>
+            <SidebarGroup className="group-data-[collapsible=icon]:hidden">
               <SidebarGroupLabel>Conversaciones</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-1">
@@ -171,9 +174,11 @@ export function AppSidebar() {
           )}
         </SidebarContent>
         <SidebarFooter>
-          <DevNotice variant="card" />
+          <div className="group-data-[collapsible=icon]:hidden">
+            <DevNotice variant="card" />
+          </div>
           {/* Daily goal: minutes today against the goal, or met by finishing a lesson. */}
-          <Link href="/activity" onClick={close} className="mx-2 mb-1 space-y-1.5 rounded-lg border px-3 py-2 text-xs transition-colors hover:bg-sidebar-accent">
+          <Link href="/activity" onClick={close} className="mx-2 mb-1 space-y-1.5 rounded-lg border px-3 py-2 text-xs transition-colors group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent">
             <span className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1 font-medium">
                 <Flame className={`size-3.5 ${streak ? "text-primary" : "text-muted-foreground"}`} />
@@ -188,7 +193,7 @@ export function AppSidebar() {
           <SidebarMenu className="gap-1">
             <SidebarMenuItem>
               {/* Icons and label switch via the .dark class, so server and client markup match. */}
-              <SidebarMenuButton onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
+              <SidebarMenuButton tooltip="Cambiar tema" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
                 <Moon className="dark:hidden" />
                 <Sun className="hidden dark:block" />
                 <span className="dark:hidden">Modo oscuro</span>
@@ -196,7 +201,7 @@ export function AppSidebar() {
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton onClick={logout}>
+              <SidebarMenuButton tooltip="Cerrar sesión" onClick={logout}>
                 <LogOut />
                 <span>Cerrar sesión</span>
               </SidebarMenuButton>
