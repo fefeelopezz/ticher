@@ -7,6 +7,9 @@ import { ArrowUp, BookOpen, GraduationCap, Lightbulb, Mic, Paperclip, Plus, X } 
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { SubjectSelect } from "@/components/subject-select"
 import { openMaterial, storeFiles } from "@/components/subjects-section"
@@ -172,6 +175,63 @@ function Attachment({ file, size, onRemove }: { file: Material; size: "thumb" | 
   )
 }
 
+// "Material" button: a popup with one switch per source the tutor can read for this subject.
+function MaterialPicker(p: {
+  subject: string
+  files: number
+  preps: number
+  useFiles: boolean
+  usePrep: boolean
+  onFiles: (on: boolean) => void
+  onPrep: (on: boolean) => void
+}) {
+  const active = (p.files > 0 && p.useFiles) || (p.preps > 0 && p.usePrep)
+  const rows = [
+    p.files > 0 && {
+      id: "use-files",
+      label: `Archivos (${p.files})`,
+      hint: "Tus apuntes y archivos de la materia.",
+      checked: p.useFiles,
+      onChange: p.onFiles,
+    },
+    p.preps > 0 && {
+      id: "use-prep",
+      label: `Preparación de examen${p.preps > 1 ? `es (${p.preps})` : ""}`,
+      hint: "Temas, textos inteligentes, lecciones y errores.",
+      checked: p.usePrep,
+      onChange: p.onPrep,
+    },
+  ].filter((r) => !!r)
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button type="button" variant="ghost" size="icon" className="relative" aria-label={`Material de ${p.subject}${active ? " (en uso)" : ""}`} title="Material de estudio" />
+        }
+      >
+        <BookOpen />
+        {/* Orange dot: the tutor is reading at least one source. */}
+        {active && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-background" />}
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-72 space-y-3">
+        <div className="space-y-0.5">
+          <p className="text-sm font-medium">Material de {p.subject}</p>
+          <p className="text-xs text-muted-foreground">Elige qué puede leer el tutor para responderte.</p>
+        </div>
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-start justify-between gap-3">
+            <Label htmlFor={r.id} className="flex-col items-start gap-0.5 font-normal">
+              <span className="text-sm">{r.label}</span>
+              <span className="text-xs text-muted-foreground">{r.hint}</span>
+            </Label>
+            <Switch id={r.id} checked={r.checked} onCheckedChange={r.onChange} />
+          </div>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const router = useRouter()
   const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
@@ -184,7 +244,9 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
   const [input, setInput] = useState(initialPrompt)
   const [subject, setSubject] = useState(saved?.subject ?? initialSubject ?? "Otro")
   const [pendingFiles, setPendingFiles] = useState<Material[]>([])
-  const [useMaterial, setUseMaterial] = useState(true)
+  // Both on by default; the "Material" popup lets the student leave either out.
+  const [useFiles, setUseFiles] = useState(true)
+  const [usePrep, setUsePrep] = useState(true)
   const [thinking, setThinking] = useState(false)
   const [listening, setListening] = useState(false)
   const canDictate = useSyncExternalStore(noop, () => !!getRecognition(), () => false)
@@ -229,7 +291,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
     setInput("")
     setThinking(true)
     try {
-      const { files: payload, skipped } = await toPayload([...chatFiles, ...sent, ...(useMaterial ? subjectMaterials : [])])
+      const { files: payload, skipped } = await toPayload([...chatFiles, ...sent, ...(useFiles ? subjectMaterials : [])])
       if (skipped.length) toast.info(`No se enviaron a la IA: ${skipped.join(", ")} (formato no compatible o muy grande).`)
       const data = await postJson<{ reply: string; suggestions: string[]; title?: string }>("/api/chat", {
         subject,
@@ -237,7 +299,7 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
         socratic: profile.socratic,
         messages: history,
         files: payload,
-        prep: useMaterial && subjectPreps.length ? prepContext(subjectPreps) : "",
+        prep: usePrep && subjectPreps.length ? prepContext(subjectPreps) : "",
       })
       updateChat(current, (c) => ({
         ...c,
@@ -399,8 +461,8 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
             send()
           }}
         >
-          {/* Tab rising out of the composer's top edge; its bottom row covers the composer border, and each
-              shoulder draws the curve from that border up into the tab's side while hiding the border under it. */}
+          {/* Tab rising out of the composer's top edge; each shoulder draws the curve from the composer border
+              up into the tab's side while hiding the border under it. */}
           <div className="absolute bottom-full left-1/2 z-10 -translate-x-1/2 rounded-t-2xl border border-b-0 bg-background px-2 pt-1.5 pb-1 transition-colors group-focus-within:border-primary/50">
             <Shoulder className="-left-3" />
             <SubjectSelect
@@ -411,26 +473,6 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
             />
             <Shoulder className="-right-3 -scale-x-100" />
           </div>
-          {/* Sits on the composer's top-left edge, level with the subject tab; on phones only icon and count fit beside it. */}
-          {(subjectMaterials.length > 0 || subjectPreps.length > 0) && (
-            <button
-              type="button"
-              onClick={() => setUseMaterial(!useMaterial)}
-              aria-pressed={useMaterial}
-              aria-label={`Usar material y preparación de ${subject}`}
-              title={`Usar material y preparación de ${subject}`}
-              className={cn(
-                "absolute bottom-full left-1 mb-1.5 flex items-center gap-1 rounded-full border px-2 py-1 text-xs transition-colors",
-                useMaterial ? "border-primary bg-primary text-primary-foreground" : "bg-background text-muted-foreground"
-              )}
-            >
-              <BookOpen className="size-3" />
-              <span className="hidden sm:inline">Usar material de {subject}</span>
-              <span>
-                ({[subjectMaterials.length && `${subjectMaterials.length} arch.`, subjectPreps.length && `${subjectPreps.length} examen${subjectPreps.length > 1 ? "es" : ""}`].filter(Boolean).join(" · ")})
-              </span>
-            </button>
-          )}
           {/* Attached but not sent yet: inside the composer, so they read as part of the message. */}
           {pendingFiles.length > 0 && (
             <div className="flex flex-wrap gap-3 px-1 pt-1">
@@ -444,6 +486,17 @@ export function Chat({ chatId, initialPrompt = "", initialSubject }: Props) {
               <Paperclip />
             </Button>
             <Whiteboard onDone={(file) => attach([file])} />
+            {(subjectMaterials.length > 0 || subjectPreps.length > 0) && (
+              <MaterialPicker
+                subject={subject}
+                files={subjectMaterials.length}
+                preps={subjectPreps.length}
+                useFiles={useFiles}
+                usePrep={usePrep}
+                onFiles={setUseFiles}
+                onPrep={setUsePrep}
+              />
+            )}
             <input
               ref={fileInput}
               type="file"
