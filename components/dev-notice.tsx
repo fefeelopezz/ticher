@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { usePathname } from "next/navigation"
 import { ArrowRight, Construction, Send } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -49,7 +48,6 @@ const EN: typeof ES = {
 // form whose messages are emailed to the team (app/api/feedback). Signed-in users are known by their session.
 export function DevNotice({ variant, lang = "es" }: { variant: "banner" | "card"; lang?: Lang }) {
   const t = lang === "en" ? EN : ES
-  const page = usePathname()
   // Visitors on the landing have no session, so they can leave an email to get a reply.
   const askEmail = variant === "banner"
   const [open, setOpen] = useState(false)
@@ -61,7 +59,8 @@ export function DevNotice({ variant, lang = "es" }: { variant: "banner" | "card"
   async function send() {
     setBusy(true)
     try {
-      await postJson("/api/feedback", { message, email, page, website })
+      // Read at send time, not with usePathname: that hook blocks prerendering of dynamic routes like /exams/[id].
+      await postJson("/api/feedback", { message, email, page: window.location.pathname, website })
       toast.success(t.thanks)
       setMessage("")
       setOpen(false)
