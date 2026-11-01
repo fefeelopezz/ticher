@@ -3,7 +3,8 @@ import { z } from "zod"
 
 // Any Gemini model ID works here; see docs/conectar-ia.md for the options.
 export const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash"
-// Free-tier models are often "high demand" (503); a lighter model usually still answers.
+// Free tier: MODEL is "high demand" (503) at times and allows only 20 requests a day and 5 a minute (429),
+// while this lighter model gets 500 a day and 15 a minute, so either error retries here.
 const BUSY_FALLBACK = "gemini-3.5-flash-lite"
 
 export const FileSchema = z.object({
@@ -48,8 +49,8 @@ export async function ask<T extends z.ZodType>(schema: T, system: string, conten
   try {
     res = await request(MODEL)
   } catch (error) {
-    if (!(error instanceof ApiError && error.status === 503) || MODEL === BUSY_FALLBACK) throw error
-    console.warn(`[ai] ${MODEL} busy, retrying with ${BUSY_FALLBACK}`)
+    if (!(error instanceof ApiError && (error.status === 503 || error.status === 429)) || MODEL === BUSY_FALLBACK) throw error
+    console.warn(`[ai] ${MODEL} ${error.status === 429 ? "over quota" : "busy"}, retrying with ${BUSY_FALLBACK}`)
     res = await request(BUSY_FALLBACK)
   }
   if (!res.text) throw new Error(`no output (${res.candidates?.[0]?.finishReason ?? res.promptFeedback?.blockReason})`)
