@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react"
 import { toast } from "sonner"
 import { currentStreak, longestStreak, today, type Point, type Review, type Topic } from "./progress"
-import { planSync } from "./sync"
+import { DATA_KEYS, planSync } from "./sync"
 
 export * from "./progress"
 
@@ -182,8 +182,6 @@ export const storageKey = (key: string) => {
   const user = currentUser()
   return user ? `ticher.${user}.${key}` : `ticher.${key}`
 }
-
-const DATA_KEYS = ["preps", "subjects", "events", "chats", "lessons", "minutes", "profile"]
 
 // Data saved before login existed belongs to whoever signs in first on this browser.
 export function adoptLegacyData() {

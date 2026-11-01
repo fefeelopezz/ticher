@@ -1,8 +1,10 @@
 import { z } from "zod"
 import { getSession, unauthorized } from "@/lib/auth"
 import { cloudEnabled, rest } from "@/lib/supabase"
+import { DATA_KEYS } from "@/lib/sync"
 
-const Body = z.object({ key: z.string().regex(/^[a-z]{1,20}$/), value: z.unknown() })
+// Only the app's own keys, so nobody can fill the database with rows under made-up keys.
+const Body = z.object({ key: z.enum(DATA_KEYS), value: z.unknown() })
 
 // Without Supabase configured the app keeps working from localStorage only.
 const disabled = () => Response.json({ enabled: false })

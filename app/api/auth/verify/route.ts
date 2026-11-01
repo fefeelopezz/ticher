@@ -12,6 +12,7 @@ import {
   type Otp,
 } from "@/lib/auth-core"
 import { authSecret, cookieOptions } from "@/lib/auth"
+import { cloudEnabled, rest } from "@/lib/supabase"
 
 const Body = z.object({ code: z.string().trim().regex(/^\d{6}$/) })
 
@@ -23,6 +24,19 @@ export async function POST(request: Request) {
 
   const jar = await cookies()
   const otp = verify<Otp>(jar.get(OTP_COOKIE)?.value, secret)
+
+  // The tries in the cookie can be rewound by resending an older copy of it, so every attempt on a live
+  // code is also counted in Supabase (supabase/migrations/*_auth_attempts.sql), which can't be rewound.
+  if (otp && otp.exp > Date.now() && cloudEnabled()) {
+    const res = await rest("rpc/bump_auth_attempt", { method: "POST", body: JSON.stringify({ p_id: otp.hash }) })
+    if (res.ok && Number(await res.json()) > MAX_TRIES) {
+      jar.delete(OTP_COOKIE)
+      return Response.json({ error: "Demasiados intentos. Por favor, solicita un código nuevo." }, { status: 429 })
+    }
+    // shortcut: until that migration is applied the call 404s and only the cookie counts; apply it to close the gap.
+    if (!res.ok) console.error("[auth] attempt counter", res.status)
+  }
+
   const result = checkOtp(otp, body.data.code, secret)
 
   if (result === "missing" || result === "expired") {

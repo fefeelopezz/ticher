@@ -4,8 +4,9 @@ import { z } from "zod"
 import { cookieOptions, getSession } from "@/lib/auth"
 import { emailLayout, escapeHtml } from "@/lib/email"
 
-// Messages from the "Ticher está en desarrollo" notice, open to visitors too.
-const TO = process.env.FEEDBACK_TO || "horiartz12355@gmail.com"
+// Messages from the "Ticher está en desarrollo" notice, open to visitors too. The inbox comes from the
+// environment so the address isn't published with the code.
+const TO = process.env.FEEDBACK_TO
 const COOLDOWN_COOKIE = "ticher_feedback"
 const COOLDOWN_SECONDS = 30
 
@@ -27,7 +28,7 @@ export async function POST(request: Request) {
   if (jar.get(COOLDOWN_COOKIE)) return Response.json({ error: "Espera unos segundos antes de enviar otro mensaje." }, { status: 429 })
 
   const key = process.env.RESEND_API_KEY
-  if (!key) return Response.json({ error: "Falta configurar RESEND_API_KEY." }, { status: 503 })
+  if (!key || !TO) return Response.json({ error: "El envío de mensajes no está configurado todavía." }, { status: 503 })
 
   const session = await getSession()
   const from = session?.email || body.data.email || ""
