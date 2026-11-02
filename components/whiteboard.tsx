@@ -10,11 +10,7 @@ import { cn } from "@/lib/utils"
 const W = 1200
 const H = 800
 const PAPER = "#ffffff"
-const COLORS = [
-  { value: "#171717", label: "Negro" },
-  { value: "#2563eb", label: "Azul" },
-  { value: "#dc2626", label: "Rojo" },
-]
+const INK = "#171717"
 const PEN_WIDTH = 4
 const ERASER_WIDTH = 32
 const MAX_UNDO = 30
@@ -23,7 +19,6 @@ const MAX_UNDO = 30
 export function Whiteboard({ onDone, disabled }: { onDone: (file: File) => void; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
   const [tool, setTool] = useState<"pen" | "eraser">("pen")
-  const [color, setColor] = useState(COLORS[0].value)
   const [empty, setEmpty] = useState(true)
   const [undoable, setUndoable] = useState(false)
   const canvas = useRef<HTMLCanvasElement | null>(null)
@@ -59,7 +54,7 @@ export function Whiteboard({ onDone, disabled }: { onDone: (file: File) => void;
     const c = ctx()
     c.lineCap = c.lineJoin = "round"
     // The eraser paints paper, so the exported image never has holes.
-    c.strokeStyle = tool === "eraser" ? PAPER : color
+    c.strokeStyle = tool === "eraser" ? PAPER : INK
     c.lineWidth = tool === "eraser" ? ERASER_WIDTH : PEN_WIDTH
     c.beginPath()
     c.moveTo(from.x, from.y)
@@ -139,26 +134,6 @@ export function Whiteboard({ onDone, disabled }: { onDone: (file: File) => void;
               >
                 <Icon /> {label}
               </Button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Color">
-            {COLORS.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                role="radio"
-                aria-checked={tool === "pen" && color === c.value}
-                aria-label={c.label}
-                onClick={() => {
-                  setColor(c.value)
-                  setTool("pen")
-                }}
-                className={cn(
-                  "size-7 rounded-full border-2 transition-transform hover:scale-110",
-                  tool === "pen" && color === c.value ? "border-primary ring-2 ring-primary/30" : "border-border"
-                )}
-                style={{ background: c.value }}
-              />
             ))}
           </div>
           <div className="ml-auto flex gap-1">
