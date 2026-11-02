@@ -94,8 +94,12 @@ type Props = { chatId?: string; initialPrompt?: string; initialSubject?: string 
 // Drawn for the left side; mirror it with -scale-x-100 for the right.
 function Shoulder({ className }: { className: string }) {
   return (
-    <svg viewBox="0 0 12 12" aria-hidden className={`absolute bottom-0 size-3 ${className}`}>
-      <path d="M0 11.5A11.5 11.5 0 0 0 11.5 0H12V12H0Z" className="fill-background" />
+    // 13px wide, one more than the curve: the cover reaches 1px into the tab so it hides the tab's side border
+    // under the curve in full. The tab is centered with a translate and often lands between pixels (e.g. x = 594.125),
+    // which smears that border over two pixel columns and left a faint line in each corner.
+    <svg viewBox="0 0 13 12" aria-hidden className={`absolute bottom-0 h-3 w-[13px] ${className}`}>
+      {/* The cover's curve also sits half a pixel inside the stroke, so it hides whole pixels of the borders it meets. */}
+      <path d="M0 11A11 11 0 0 0 11 0H13V12H0Z" className="fill-background" />
       <path
         d="M0 11.5A11.5 11.5 0 0 0 11.5 0"
         fill="none"
