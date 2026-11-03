@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
   BarChart3,
+  ShieldCheck,
   CalendarDays,
   ChevronsUpDown,
   Flame,
@@ -58,6 +59,7 @@ const NAV: NavItem[] = [
   { href: "/calendar", label: "Calendario", icon: CalendarDays },
 ]
 // Personal pages open from the user menu at the bottom of the sidebar.
+const ADMIN: NavItem = { href: "/admin", label: "Panel de admin", icon: ShieldCheck }
 const ACCOUNT: NavItem[] = [
   { href: "/activity", label: "Mi actividad", icon: BarChart3 },
   { href: "/settings", label: "Ajustes", icon: Settings },
@@ -124,6 +126,14 @@ export function AppSidebar() {
     // No cleanup on purpose: the cloud pull changes subjects/chats right after load, which would cancel it.
     setTimeout(() => backupFiles([...new Set(ids)]).catch(() => {}), 4000)
   }, [hydrated, subjects, chats])
+  // The server decides who is an admin (ADMIN_EMAILS); the menu only shows the link to them.
+  const [admin, setAdmin] = useState(false)
+  useEffect(() => {
+    fetch("/api/admin?check=1")
+      .then((res) => (res.ok ? res.json() : { admin: false }))
+      .then((data) => setAdmin(!!data.admin))
+      .catch(() => {})
+  }, [])
   const [profile] = useStored<Profile>("profile", DEFAULT_PROFILE)
   const name = profile.name || "Estudiante"
   const email = useEmail()
@@ -238,7 +248,7 @@ export function AppSidebar() {
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
-                  {ACCOUNT.map(({ href, label, icon: Icon }) => (
+                  {[...ACCOUNT, ...(admin ? [ADMIN] : [])].map(({ href, label, icon: Icon }) => (
                     <DropdownMenuItem
                       key={href}
                       onClick={() => {
