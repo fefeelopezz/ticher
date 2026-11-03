@@ -1,6 +1,7 @@
 import { cookies } from "next/headers"
 import { Resend } from "resend"
 import { z } from "zod"
+import { logActivity } from "@/lib/activity"
 import { cookieOptions, getSession } from "@/lib/auth"
 import { emailLayout, escapeHtml } from "@/lib/email"
 
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
       console.error("[feedback] resend", error)
       return Response.json({ error: "No se pudo enviar el mensaje. Intenta de nuevo en un rato." }, { status: 502 })
     }
+    await logActivity("message", from, { message, page: page ?? "", signedIn: !!session })
   }
 
   jar.set(COOLDOWN_COOKIE, "1", cookieOptions(COOLDOWN_SECONDS))

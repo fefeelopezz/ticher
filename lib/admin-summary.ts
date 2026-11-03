@@ -4,6 +4,10 @@ import type { Chat, ExamPrep, Profile } from "./store"
 // Pure so Node can test it.
 export type Row = { email: string; key: string; value: unknown; updated_at: string; created_at?: string }
 
+export type Login = { email: string; created_at: string }
+export type AiUsage = { email: string; day: number; week: number; total: number; tokens: number }
+export type Message = { id: number; email: string; created_at: string; detail: { message: string; page: string; signedIn: boolean } }
+
 export type HistoryItem = { date: string | null; kind: string; topic: string; score: number | null }
 export type ExamSummary = {
   name: string
@@ -23,6 +27,9 @@ export type UserSummary = {
   exams: ExamSummary[]
   chats: { title: string; subject: string; messages: number; updatedAt: string }[]
   lessons: number
+  // Newest first.
+  logins: string[]
+  ai: Omit<AiUsage, "email">
 }
 
 const LESSON_KIND = { cards: "Tarjetas", quiz: "Cuestionario", written: "Preguntas escritas" } as const
@@ -40,8 +47,10 @@ function exam(p: ExamPrep): ExamSummary {
   return { name: p.name, subject: p.subject, date: p.date, mastery: p.mastery ?? 0, topics: p.topics?.length ?? 0, history }
 }
 
-export function summarize(rows: Row[]): UserSummary[] {
+// Logins are sorted newest first. They also bring in people who signed in but never saved anything.
+export function summarize(rows: Row[], logins: Login[] = [], usage: AiUsage[] = []): UserSummary[] {
   const byEmail = new Map<string, Row[]>()
+  for (const { email } of logins) byEmail.set(email, [])
   for (const r of rows) byEmail.set(r.email, [...(byEmail.get(r.email) ?? []), r])
 
   return [...byEmail].map(([email, own]) => {
@@ -51,17 +60,21 @@ export function summarize(rows: Row[]): UserSummary[] {
     const chats = value<Chat[]>("chats") ?? []
     const exams = preps.map(exam)
     // created_at is the row's first save; older databases only have updated_at, which moves on every sync.
-    const firsts = own.map((r) => r.created_at ?? r.updated_at).sort()
+    const accesses = logins.filter((l) => l.email === email).map((l) => l.created_at)
+    const firsts = [...own.map((r) => r.created_at ?? r.updated_at), ...accesses].sort()
+    const { day = 0, week = 0, total = 0, tokens = 0 } = usage.find((u) => u.email === email) ?? {}
     return {
       email,
       name: profile?.name?.trim() || "Sin nombre",
       level: profile?.level ?? "—",
       joined: firsts[0],
-      lastActive: own.map((r) => r.updated_at).sort().at(-1)!,
+      lastActive: [...own.map((r) => r.updated_at), ...accesses].sort().at(-1)!,
       minutes: Object.values(value<Record<string, number>>("minutes") ?? {}).reduce((a, b) => a + b, 0),
       exams,
       chats: chats.map((c) => ({ title: c.title, subject: c.subject, messages: c.messages?.length ?? 0, updatedAt: new Date(c.updatedAt).toISOString() })),
       lessons: exams.reduce((n, e) => n + e.history.length, 0),
+      logins: accesses,
+      ai: { day, week, total, tokens },
     }
   }).sort((a, b) => b.lastActive.localeCompare(a.lastActive))
 }

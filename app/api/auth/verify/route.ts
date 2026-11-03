@@ -11,6 +11,7 @@ import {
   verify,
   type Otp,
 } from "@/lib/auth-core"
+import { clearDeleted, logActivity } from "@/lib/activity"
 import { authSecret, cookieOptions } from "@/lib/auth"
 import { cloudEnabled, rest } from "@/lib/supabase"
 
@@ -64,5 +65,7 @@ export async function POST(request: Request) {
   jar.set(SESSION_COOKIE, sign({ email, exp: Date.now() + maxAge * 1000 }, secret), cookieOptions(maxAge))
   // Next URL-encodes cookie values itself; the client decodes once.
   jar.set(USER_COOKIE, email, cookieOptions(maxAge, false))
+  await clearDeleted(email)
+  await logActivity("login", email)
   return Response.json({ email })
 }

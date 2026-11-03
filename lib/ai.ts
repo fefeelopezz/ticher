@@ -1,5 +1,7 @@
 import { ApiError, GoogleGenAI, type Content, type Part } from "@google/genai"
 import { z } from "zod"
+import { logActivity } from "./activity"
+import { getSession } from "./auth"
 
 // Any Gemini model ID works here; see docs/conectar-ia.md for the options.
 export const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash"
@@ -55,7 +57,11 @@ export async function ask<T extends z.ZodType>(schema: T, system: string, conten
   }
   if (!res.text) throw new Error(`no output (${res.candidates?.[0]?.finishReason ?? res.promptFeedback?.blockReason})`)
   // The schema constrains decoding, but validate anyway: the model's JSON is untrusted input.
-  return schema.parse(JSON.parse(res.text))
+  const answer = schema.parse(JSON.parse(res.text))
+  // Every AI route goes through here, so each answered call counts once for the admin panel.
+  const session = await getSession()
+  if (session) await logActivity("ai", session.email, { tokens: res.usageMetadata?.totalTokenCount ?? 0 })
+  return answer
 }
 
 // Maps failures to a short Spanish message for the student; details go to the server log.

@@ -1,12 +1,16 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BookOpen, ChevronDown, Clock, GraduationCap, MessageCircle, Search, Users } from "lucide-react"
+import { BookOpen, ChevronDown, Clock, GraduationCap, MessageCircle, Search, Sparkles, Trash2, Users } from "lucide-react"
+import { toast } from "sonner"
+import { useConfirm } from "@/components/confirm-dialog"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { UserSummary } from "@/lib/admin-summary"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { Message, UserSummary } from "@/lib/admin-summary"
 
 const day = (iso: string | null) =>
   iso ? new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" }) : "—"
@@ -18,11 +22,16 @@ function ago(iso: string, now: number) {
   return `hace ${Math.round(mins / 60 / 24)} días`
 }
 
+const moment = (iso: string) => new Date(iso).toLocaleString("es", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+
 const hours = (minutes: number) => (minutes < 60 ? `${minutes} min` : `${(minutes / 60).toFixed(1)} h`)
 
 // Only for the emails in ADMIN_EMAILS: /api/admin answers 404 to everyone else, and so does this page.
 export default function AdminPage() {
   const [users, setUsers] = useState<UserSummary[]>()
+  const [messages, setMessages] = useState<Message[]>([])
+  const [me, setMe] = useState("")
+  const [confirm, confirmDialog] = useConfirm()
   const [state, setState] = useState<"loading" | "ready" | "hidden" | "error">("loading")
   const [query, setQuery] = useState("")
   // When the data arrived: "active in the last 7 days" and "hace X" are measured from here, not during render.
@@ -33,7 +42,10 @@ export default function AdminPage() {
       .then(async (res) => {
         if (res.status === 404) return setState("hidden")
         if (!res.ok) return setState("error")
-        setUsers((await res.json()).users)
+        const data = await res.json()
+        setUsers(data.users)
+        setMessages(data.messages)
+        setMe(data.me)
         setNow(Date.now())
         setState("ready")
       })
@@ -66,6 +78,20 @@ export default function AdminPage() {
     )
   }
 
+  async function removeUser(u: UserSummary) {
+    const ok = await confirm({
+      title: `¿Eliminar a ${u.email}?`,
+      description: "Se borran para siempre sus exámenes, conversaciones, archivos, accesos, uso de IA y mensajes, y se cierra su sesión. No se puede deshacer.",
+      confirmLabel: "Eliminar usuario",
+    })
+    if (!ok) return
+    const res = await fetch("/api/admin", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: u.email }) })
+    if (!res.ok) return toast.error((await res.json().catch(() => null))?.error ?? "No se pudo eliminar el usuario.")
+    setUsers((all) => all?.filter((x) => x.email !== u.email))
+    setMessages((all) => all.filter((m) => m.email !== u.email))
+    toast.success("Usuario eliminado")
+  }
+
   const week = now - 7 * 86_400_000
   const totals = [
     { label: "Usuarios", value: users.length, icon: Users },
@@ -73,15 +99,17 @@ export default function AdminPage() {
     { label: "Exámenes", value: users.reduce((n, u) => n + u.exams.length, 0), icon: GraduationCap },
     { label: "Lecciones", value: users.reduce((n, u) => n + u.lessons, 0), icon: BookOpen },
     { label: "Estudio total", value: hours(users.reduce((n, u) => n + u.minutes, 0)), icon: Clock },
+    { label: "IA (24 h)", value: users.reduce((n, u) => n + u.ai.day, 0), icon: Sparkles },
   ]
   const q = query.trim().toLowerCase()
   const shown = q ? users.filter((u) => u.email.includes(q) || u.name.toLowerCase().includes(q)) : users
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-8">
+      {confirmDialog}
       <h1 className="text-2xl font-semibold tracking-tight">Panel de administración</h1>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         {totals.map(({ label, value, icon: Icon }) => (
           <Card key={label} size="sm">
             <CardContent className="space-y-1">
@@ -94,6 +122,13 @@ export default function AdminPage() {
         ))}
       </div>
 
+      <Tabs defaultValue="users" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="users">Usuarios ({users.length})</TabsTrigger>
+          <TabsTrigger value="messages">Mensajes ({messages.length})</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="users" className="space-y-4">
       <div className="relative">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nombre o email" aria-label="Buscar usuario" className="pl-9" />
@@ -107,7 +142,7 @@ export default function AdminPage() {
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary">
                 {u.name[0]?.toUpperCase() ?? "?"}
               </span>
-              <span className="min-w-0 flex-1">
+              <span className="min-w-56 flex-1">
                 <span className="block truncate font-medium">{u.name}</span>
                 <span className="block truncate text-sm text-muted-foreground">{u.email}</span>
               </span>
@@ -119,6 +154,7 @@ export default function AdminPage() {
                 <Badge variant="outline">{u.exams.length} exám.</Badge>
                 <Badge variant="outline">{u.lessons} lecc.</Badge>
                 <Badge variant="outline">{hours(u.minutes)}</Badge>
+                <Badge variant="outline">{u.ai.total} IA</Badge>
               </span>
               <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
             </summary>
@@ -167,6 +203,31 @@ export default function AdminPage() {
                 ))}
               </div>
 
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Uso de IA</p>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                    <dt className="text-muted-foreground">Últimas 24 h</dt>
+                    <dd className="text-right tabular-nums">{u.ai.day}</dd>
+                    <dt className="text-muted-foreground">Últimos 7 días</dt>
+                    <dd className="text-right tabular-nums">{u.ai.week}</dd>
+                    <dt className="text-muted-foreground">Total</dt>
+                    <dd className="text-right tabular-nums">{u.ai.total}</dd>
+                    <dt className="text-muted-foreground">Tokens</dt>
+                    <dd className="text-right tabular-nums">{u.ai.tokens.toLocaleString("es")}</dd>
+                  </dl>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Accesos ({u.logins.length})</p>
+                  {u.logins.length === 0 && <p className="text-sm text-muted-foreground">Sin accesos registrados.</p>}
+                  {u.logins.slice(0, 10).map((l) => (
+                    <p key={l} className="text-sm text-muted-foreground">
+                      {moment(l)}
+                    </p>
+                  ))}
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <p className="text-sm font-medium">Conversaciones ({u.chats.length})</p>
                 {u.chats.length === 0 && <p className="text-sm text-muted-foreground">Sin conversaciones.</p>}
@@ -180,10 +241,43 @@ export default function AdminPage() {
                   </p>
                 ))}
               </div>
+
+              {u.email !== me && (
+                <div className="flex justify-end border-t pt-4">
+                  <Button variant="destructive" size="sm" onClick={() => removeUser(u)}>
+                    <Trash2 /> Eliminar usuario
+                  </Button>
+                </div>
+              )}
             </div>
           </details>
         ))}
       </section>
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-2">
+          {messages.length === 0 && <p className="py-8 text-center text-muted-foreground">Todavía no llegaron mensajes.</p>}
+          {messages.map((m) => (
+            <article key={m.id} className="space-y-2 rounded-xl border bg-card p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <p className="min-w-0 truncate text-sm font-medium">
+                  {m.email || "Visitante sin correo"}
+                  {m.email && !m.detail.signedIn && <span className="font-normal text-muted-foreground"> · correo sin verificar</span>}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {moment(m.created_at)} · {m.detail.page || "—"}
+                </p>
+              </div>
+              <p className="text-sm break-words whitespace-pre-wrap">{m.detail.message}</p>
+              {m.email && (
+                <a href={`mailto:${m.email}`} className="inline-block text-sm text-primary hover:underline">
+                  Responder
+                </a>
+              )}
+            </article>
+          ))}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

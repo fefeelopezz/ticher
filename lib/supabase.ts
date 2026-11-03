@@ -16,3 +16,7 @@ export const rest = (path: string, init: RequestInit = {}) => call("rest/v1", pa
 // Storage API; signed URLs it returns are relative to this base, see storageUrl.
 export const storage = (path: string, init: RequestInit = {}) => call("storage/v1", path, init)
 export const storageUrl = (relative: string) => `${url}/storage/v1${relative}`
+
+export const BUCKET = "files"
+// Each user's folder inside the bucket.
+export const userFolder = (email: string) => email.replace(/[^a-z0-9@._+-]/gi, "_")

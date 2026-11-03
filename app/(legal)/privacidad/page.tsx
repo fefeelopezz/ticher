@@ -7,7 +7,7 @@ export default function PrivacyPage() {
   return (
     <article>
       <h1>Política de privacidad</h1>
-      <p>Última actualización: 1 de noviembre de 2026.</p>
+      <p>Última actualización: 3 de noviembre de 2026.</p>
       <p>
         En esta política explicamos qué datos guarda Ticher (ticher.pro), para qué los usamos y qué derechos tienes. Complementa los{" "}
         <Link href="/terminos">Términos de uso</Link>.
@@ -20,6 +20,7 @@ export default function PrivacyPage() {
         <li>Tu estudio: materias, exámenes, temas, lecciones, conversaciones con el tutor, progreso, racha y minutos de estudio.</li>
         <li>Los archivos que subes: apuntes, PDFs, fotos y dibujos del pizarrón.</li>
         <li>Los mensajes que nos envías desde el formulario &quot;Ticher está en desarrollo&quot;.</li>
+        <li>Tu actividad: cuándo entras a tu cuenta y cuántas consultas haces a la IA.</li>
       </ul>
       <p>No pedimos datos de pago, documento ni ubicación, y no vendemos tus datos a nadie.</p>
 
@@ -30,6 +31,10 @@ export default function PrivacyPage() {
         <li>Para responder tus mensajes y mejorar Ticher.</li>
         <li>Para proteger el servicio contra abusos (por ejemplo, limitar intentos de acceso).</li>
       </ul>
+      <p>
+        El administrador de Ticher puede ver tu perfil, tus exámenes, tus lecciones, los títulos de tus conversaciones y tu actividad, para dar
+        soporte y cuidar el servicio. Desde ese panel no ve el contenido de tus conversaciones ni tus archivos.
+      </p>
 
       <h2>3. Con quién los compartimos</h2>
       <p>Usamos proveedores que procesan datos por cuenta nuestra, solo para hacer funcionar Ticher:</p>
