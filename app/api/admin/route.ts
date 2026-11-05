@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { markDeleted } from "@/lib/activity"
 import { isAdmin } from "@/lib/admin"
-import { summarize, type AiUsage, type Login, type Message, type Row } from "@/lib/admin-summary"
+import { quotaDayStart, summarize, type AiUsage, type Login, type Message, type Row } from "@/lib/admin-summary"
 import { getSession } from "@/lib/auth"
 import { BUCKET, cloudEnabled, rest, storage, userFolder } from "@/lib/supabase"
 
@@ -17,6 +17,7 @@ export async function GET(request: Request) {
   if (!admin) return notFound()
   if (!cloudEnabled()) return noCloud()
 
+  const quotaDay = quotaDayStart()
   const responses = await Promise.all([
     // shortcut: loads every user's rows at once, fine for a small group; paginate if this grows to thousands.
     // select=* so created_at (sign-up date) comes along once that column exists; summarize falls back to updated_at.
@@ -25,15 +26,19 @@ export async function GET(request: Request) {
     rest("activity_log?select=email,created_at&kind=eq.login&order=created_at.desc&limit=1000"),
     rest("rpc/admin_ai_usage", { method: "POST", body: "{}" }),
     rest("activity_log?select=id,email,detail,created_at&kind=eq.message&order=created_at.desc&limit=200"),
+    // Only the total matters here, and it comes back in the Content-Range header.
+    rest(`activity_log?select=id&kind=eq.ai&created_at=gte.${encodeURIComponent(quotaDay.toISOString())}&limit=1`, { headers: { Prefer: "count=exact" } }),
   ])
   const failed = responses.find((res) => !res.ok)
   if (failed) {
     console.error("[admin] supabase", failed.status)
     return Response.json({ error: "No se pudieron leer los usuarios." }, { status: 502 })
   }
-  const [rows, logins, usage, messages] = await Promise.all(responses.map((res) => res.json()))
+  const [rows, logins, usage, messages] = await Promise.all(responses.slice(0, 4).map((res) => res.json()))
   return Response.json({
     me: session!.email,
+    aiToday: Number(responses[4].headers.get("content-range")?.split("/")[1] ?? 0),
+    aiResetsAt: new Date(quotaDay.getTime() + 86_400_000).toISOString(),
     users: summarize(rows as Row[], logins as Login[], usage as AiUsage[]),
     messages: messages as Message[],
   })

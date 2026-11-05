@@ -4,6 +4,18 @@ import type { Chat, ExamPrep, Profile } from "./store"
 // Pure so Node can test it.
 export type Row = { email: string; key: string; value: unknown; updated_at: string; created_at?: string }
 
+// Free-tier requests a day: 20 on the main Gemini model plus 500 on its fallback (lib/ai.ts).
+export const AI_DAILY_LIMIT = 520
+
+// Start of Google's quota day, which resets at midnight Pacific time.
+// shortcut: on the two daylight-saving change days this can be an hour off; only the counter's edge moves.
+export function quotaDayStart(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", hourCycle: "h23", hour: "numeric", minute: "numeric", second: "numeric" }).formatToParts(now)
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value)
+  const elapsed = (part("hour") * 3600 + part("minute") * 60 + part("second")) * 1000 + now.getMilliseconds()
+  return new Date(now.getTime() - elapsed)
+}
+
 export type Login = { email: string; created_at: string }
 export type AiUsage = { email: string; day: number; week: number; total: number; tokens: number }
 export type Message = { id: number; email: string; created_at: string; detail: { message: string; page: string; signedIn: boolean } }

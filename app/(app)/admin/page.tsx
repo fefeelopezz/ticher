@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { Message, UserSummary } from "@/lib/admin-summary"
+import { AI_DAILY_LIMIT, type Message, type UserSummary } from "@/lib/admin-summary"
 
 const day = (iso: string | null) =>
   iso ? new Date(iso.length === 10 ? iso + "T00:00:00" : iso).toLocaleDateString("es", { day: "numeric", month: "short", year: "numeric" }) : "—"
@@ -31,6 +32,7 @@ export default function AdminPage() {
   const [users, setUsers] = useState<UserSummary[]>()
   const [messages, setMessages] = useState<Message[]>([])
   const [me, setMe] = useState("")
+  const [quota, setQuota] = useState({ used: 0, resetsAt: "" })
   const [confirm, confirmDialog] = useConfirm()
   const [state, setState] = useState<"loading" | "ready" | "hidden" | "error">("loading")
   const [query, setQuery] = useState("")
@@ -46,6 +48,7 @@ export default function AdminPage() {
         setUsers(data.users)
         setMessages(data.messages)
         setMe(data.me)
+        setQuota({ used: data.aiToday, resetsAt: data.aiResetsAt })
         setNow(Date.now())
         setState("ready")
       })
@@ -121,6 +124,23 @@ export default function AdminPage() {
           </Card>
         ))}
       </div>
+
+      <Card size="sm">
+        <CardContent className="space-y-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Sparkles className="size-4 text-primary" /> Consultas de IA hoy
+            </p>
+            <p className="text-sm text-muted-foreground tabular-nums">
+              <span className="text-xl font-semibold text-foreground">{quota.used}</span> / {AI_DAILY_LIMIT}
+            </p>
+          </div>
+          <Progress value={Math.min(100, (quota.used / AI_DAILY_LIMIT) * 100)} aria-label="Consultas de IA usadas hoy" />
+          <p className="text-xs text-muted-foreground">
+            Quedan {Math.max(0, AI_DAILY_LIMIT - quota.used)} · Se reinicia a las {new Date(quota.resetsAt).toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })}
+          </p>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="users" className="space-y-4">
         <TabsList>
