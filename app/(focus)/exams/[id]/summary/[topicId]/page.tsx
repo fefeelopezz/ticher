@@ -1,13 +1,15 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { Fragment, useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, CircleCheck, CornerDownLeft, ListOrdered, RotateCcw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { QuestionCard, ScoreRing } from "@/components/question-card"
+import { markTerms } from "@/lib/glossary"
 import { cn } from "@/lib/utils"
-import { isCurrentSummary, useStudyTimer, type Callout, type Summary } from "@/lib/store"
+import { isCurrentSummary, useStudyTimer, type Callout, type GlossaryEntry, type Summary } from "@/lib/store"
 import { usePrep } from "@/lib/use-prep"
 import { FocusSkeleton } from "@/components/page-skeletons"
 import { LessonLoader, settle } from "@/components/focus-shell"
@@ -19,15 +21,38 @@ const CALLOUTS: Record<Callout["kind"], { icon: string; className: string }> = {
   error: { icon: "❗", className: "border-red-500/40 bg-red-500/[0.06]" },
 }
 
+// A popover rather than a tooltip: hover opens it on a computer, and tap or keyboard work too.
+function Term({ term, definition }: { term: string; definition: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        openOnHover
+        delay={150}
+        data-term
+        className="cursor-help underline decoration-primary/70 decoration-dotted underline-offset-4 transition-colors hover:text-primary"
+      >
+        {term}
+      </PopoverTrigger>
+      <PopoverContent side="top" className="w-64 gap-1 p-3">
+        <p className="font-semibold">{term}</p>
+        <p className="leading-relaxed text-muted-foreground">{definition}</p>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 // The AI marks key terms with **bold**; everything else stays plain text (never parsed as HTML).
-function Rich({ text }: { text: string }) {
+function Rich({ text, glossary }: { text: string; glossary?: GlossaryEntry[] }) {
+  const seen = new Set<string>()
+  const withTerms = (part: string) =>
+    markTerms(part, glossary, seen).map((p, i) => (p.definition ? <Term key={i} term={p.text} definition={p.definition} /> : p.text))
   return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
     part.startsWith("**") && part.endsWith("**") ? (
       <strong key={i} className="font-semibold text-foreground">
-        {part.slice(2, -2)}
+        {withTerms(part.slice(2, -2))}
       </strong>
     ) : (
-      part
+      <Fragment key={i}>{withTerms(part)}</Fragment>
     )
   )
 }
@@ -106,7 +131,7 @@ export default function SummaryPage() {
   useEffect(() => {
     if (!summary || pendingCheck || isFinal) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Enter") return
+      if (e.key !== "Enter" || (e.target instanceof Element && e.target.closest("[data-term]"))) return
       e.preventDefault()
       setStep((s) => Math.min(total - 1, s + 1))
     }
@@ -218,7 +243,7 @@ export default function SummaryPage() {
               </div>
               <h1 className="mt-5 font-serif text-4xl leading-[1.1] tracking-tight text-balance sm:text-5xl">{summary.title}</h1>
               <p className="mt-4 text-lg leading-relaxed text-muted-foreground">
-                <Rich text={summary.intro} />
+                <Rich text={summary.intro} glossary={summary.glossary} />
               </p>
             </div>
 
@@ -265,7 +290,7 @@ export default function SummaryPage() {
                 .filter((p) => p.trim())
                 .map((p, i) => (
                   <p key={i}>
-                    <Rich text={p.trim()} />
+                    <Rich text={p.trim()} glossary={summary.glossary} />
                   </p>
                 ))}
             </div>
@@ -277,7 +302,7 @@ export default function SummaryPage() {
                   {c.title}
                 </p>
                 <p className="mt-2 text-[15px] leading-relaxed text-foreground/80">
-                  <Rich text={c.text} />
+                  <Rich text={c.text} glossary={summary.glossary} />
                 </p>
               </aside>
             ))}
@@ -288,7 +313,7 @@ export default function SummaryPage() {
                   <div key={i} role="listitem" className="w-64 shrink-0 snap-start rounded-2xl bg-muted/60 p-5">
                     <p className="font-semibold">{c.title}</p>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      <Rich text={c.text} />
+                      <Rich text={c.text} glossary={summary.glossary} />
                     </p>
                   </div>
                 ))}
@@ -305,7 +330,7 @@ export default function SummaryPage() {
                     <div className="space-y-1">
                       <p className="font-semibold">{s.title}</p>
                       <p className="text-[15px] leading-relaxed text-muted-foreground">
-                        <Rich text={s.text} />
+                        <Rich text={s.text} glossary={summary.glossary} />
                       </p>
                     </div>
                   </li>

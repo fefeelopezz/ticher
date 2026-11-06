@@ -1,5 +1,7 @@
 // Pure date and progress math, kept free of React so it can be tested with plain Node.
 
+import type { Card, ExamPrep } from "./store"
+
 export type Topic = { id: string; name: string; mastery: number; lessons: number }
 export type Point = { date: string; mastery: number }
 
@@ -79,6 +81,71 @@ export function longestStreak(dates: string[]) {
     best = Math.max(best, run)
   })
   return best
+}
+
+export const DEFAULT_GOAL = 75
+
+export const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+
+// Every flashcard of an exam (its shared deck plus each topic's saved decks), without repeats.
+export function allCards(p: ExamPrep): Card[] {
+  const decks = [p.cards ?? [], ...(p.savedLessons ?? []).flatMap((l) => (l.kind === "cards" ? [l.cards] : []))]
+  const seen = new Set<string>()
+  return decks.flat().filter((c) => !seen.has(c.front) && seen.add(c.front))
+}
+
+export type StudyTask = {
+  key: string
+  kind: "topics" | "cards" | "mistakes" | "read" | "practice"
+  title: string
+  exam: string
+  days: number
+  href: string
+}
+
+const MAX_TASKS = 6
+const plural = (n: number, word: string, ending = "s") => `${n} ${word}${n === 1 ? "" : ending}`
+
+// One exam's next steps: due cards keep what was learned, past mistakes come next, then the first topic under the goal.
+function examTasks(p: ExamPrep, days: number, date: string): StudyTask[] {
+  const base = { exam: p.name, days }
+  const page = `/exams/${p.id}`
+  const topics = p.topics ?? []
+  if (!topics.length) return [{ ...base, key: `${p.id}:topics`, kind: "topics", title: "Armar los temas del examen", href: page }]
+
+  const tasks: StudyTask[] = []
+  const due = allCards(p).filter((c) => isDue(p.reviews?.[c.front], date)).length
+  if (due) tasks.push({ ...base, key: `${p.id}:cards`, kind: "cards", title: `Repasar ${plural(due, "tarjeta")}`, href: `${page}/review/all` })
+
+  const [worst] = topics
+    .map((t) => ({ t, count: (p.mistakes ?? []).filter((q) => same(q.topic, t.name)).length }))
+    .sort((a, b) => b.count - a.count)
+  if (worst?.count) {
+    tasks.push({ ...base, key: `${p.id}:mistakes`, kind: "mistakes", title: `Corregir ${plural(worst.count, "error", "es")} de ${worst.t.name}`, href: `${page}/mistakes/${worst.t.id}` })
+  }
+
+  const next = topics.find((t) => t.mastery < (p.goal ?? DEFAULT_GOAL))
+  if (next) {
+    const read = !p.summaries?.[next.id]?.sections?.length
+    tasks.push({
+      ...base,
+      key: `${p.id}:${next.id}`,
+      kind: read ? "read" : "practice",
+      title: `${read ? "Leer" : "Practicar"} ${next.name}`,
+      href: `${page}/${read ? "summary" : "quiz"}/${next.id}`,
+    })
+  }
+  return tasks
+}
+
+// Today's list across all exams, the closest exam first; capped so the day stays doable.
+export function todayPlan(preps: ExamPrep[], now = new Date()): StudyTask[] {
+  return preps
+    .map((p) => ({ p, days: daysUntil(p.date, now) }))
+    .filter(({ days }) => days >= 0)
+    .sort((a, b) => a.days - b.days)
+    .flatMap(({ p, days }) => examTasks(p, days, isoDate(now)))
+    .slice(0, MAX_TASKS)
 }
 
 // Exam reminder emails go out this many days before the exam.

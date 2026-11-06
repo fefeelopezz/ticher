@@ -47,7 +47,9 @@ export function pagesToMarkdown(pages: TextPiece[][]): string {
   const body = bodySize(pageLines.flat())
   const out: string[] = []
 
-  for (const lines of pageLines) {
+  pageLines.forEach((lines, page) => {
+    // Lets the AI say which page an answer comes from.
+    if (pageLines.length > 1 && lines.length) out.push(`[Página ${page + 1}]`)
     let paragraph = ""
     let prev: Line | null = null
     const flush = () => {
@@ -78,7 +80,7 @@ export function pagesToMarkdown(pages: TextPiece[][]): string {
       prev = line
     }
     flush()
-  }
+  })
   // Blank line between blocks, but keep consecutive list items together.
   return out
     .map((block, i) => (i > 0 && !(block.startsWith("- ") && out[i - 1].startsWith("- ")) ? "\n" : "") + block)

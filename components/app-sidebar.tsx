@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 import { useTheme } from "next-themes"
 import {
   BarChart3,
+  CalendarCheck,
   ShieldCheck,
   CalendarDays,
   ChevronsUpDown,
@@ -54,6 +55,7 @@ import { DEFAULT_PROFILE, NO_CHATS, NO_SUBJECTS, useActivity, useEmail, useHydra
 type NavItem = { href: string; label: string; icon: LucideIcon }
 
 const NAV: NavItem[] = [
+  { href: "/today", label: "Hoy", icon: CalendarCheck },
   { href: "/", label: "Preguntar", icon: MessageCircle },
   { href: "/exams", label: "Exámenes", icon: GraduationCap },
   { href: "/calendar", label: "Calendario", icon: CalendarDays },

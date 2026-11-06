@@ -29,7 +29,8 @@ export const SUBJECTS = [
 export type Card = { topic: string; front: string; back: string }
 
 // Multiple choice; `correct` holds every right option (Astra: "Varias respuestas posibles").
-export type Question = { topic: string; question: string; options: string[]; correct: number[]; explanation: string }
+// source: the file (and page) the answer comes from; empty or missing when it isn't from the material.
+export type Question = { topic: string; question: string; options: string[]; correct: number[]; explanation: string; source?: string }
 
 export type Difficulty = "basico" | "medio" | "avanzado"
 
@@ -57,8 +58,11 @@ export type SummarySection = {
   check?: Question
 }
 
+export type GlossaryEntry = { term: string; definition: string }
+
 // score: the share of checks and final questions answered right, set when the reading is finished.
-export type Summary = { title: string; intro: string; sections: SummarySection[]; finalQuiz: Question[]; score?: number }
+// glossary: missing on summaries created before it existed.
+export type Summary = { title: string; intro: string; sections: SummarySection[]; finalQuiz: Question[]; glossary?: GlossaryEntry[]; score?: number }
 
 // Summaries saved before the step layout have no `body`; they are regenerated on open.
 export const isCurrentSummary = (s?: Summary): s is Summary =>
@@ -109,8 +113,6 @@ export type ExamPrep = {
   mistakes?: Question[]
   finals?: { date: string; score: number; seconds: number }[]
 }
-
-export const DEFAULT_GOAL = 75
 
 export type CalendarEvent = {
   id: string

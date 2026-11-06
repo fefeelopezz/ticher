@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Check, CornerDownLeft, X } from "lucide-react"
+import { Check, CornerDownLeft, FileText, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { isRight } from "@/lib/grading"
 import { cn } from "@/lib/utils"
@@ -39,8 +39,9 @@ export function ScoreRing({ value, size = 56 }: { value: number; size?: number }
   )
 }
 
-// Astra's multiple-choice card: numbered options (keys 1-4), instant feedback for single answers,
+// Astra's multiple-choice card: numbered options (keys 1-4), a choice that stays open until it is sent,
 // an "Explicación" box and a bottom bar with the verdict and "Continuar" (Enter).
+// Slides only run with no-preference for reduced motion; the fades always do.
 export function QuestionCard({ question: q, label, continueLabel = "Continuar", onDone }: Props) {
   const [chosen, setChosen] = useState<number[]>([])
   const [checked, setChecked] = useState(false)
@@ -50,11 +51,7 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
 
   function pick(option: number) {
     if (checked) return
-    if (!multiple) {
-      setChosen([option])
-      setChecked(true)
-      return
-    }
+    if (!multiple) return setChosen([option])
     setChosen((c) => (c.includes(option) ? c.filter((o) => o !== option) : [...c, option]))
   }
 
@@ -76,7 +73,7 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
   })
 
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card">
+    <div className="overflow-hidden rounded-2xl border bg-card duration-300 animate-in fade-in-0 motion-safe:slide-in-from-bottom-2">
       {label && (
         <div className="border-b px-5 py-3">
           <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
@@ -96,7 +93,11 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
             const isCorrect = checked && q.correct.includes(j)
             const isWrong = checked && on && !q.correct.includes(j)
             return (
-              <div key={j} className="flex items-center gap-3">
+              <div
+                key={j}
+                className="flex items-center gap-3 duration-300 animate-in fade-in-0 fill-mode-both motion-safe:slide-in-from-bottom-1"
+                style={{ animationDelay: `${(j + 1) * 50}ms` }}
+              >
                 <kbd className="hidden size-5 shrink-0 items-center justify-center rounded border text-[10px] text-muted-foreground sm:flex">
                   {j + 1}
                 </kbd>
@@ -107,8 +108,8 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
                   disabled={checked}
                   onClick={() => pick(j)}
                   className={cn(
-                    "flex min-h-12 flex-1 items-center gap-3 rounded-xl border px-4 py-2.5 text-left text-sm transition-colors",
-                    !checked && "hover:border-foreground/30 hover:bg-muted/50",
+                    "flex min-h-12 flex-1 items-center gap-3 rounded-xl border px-4 py-2.5 text-left text-sm transition-all duration-200",
+                    !checked && "hover:border-foreground/30 hover:bg-muted/50 motion-safe:active:scale-[0.99]",
                     on && !checked && "border-primary bg-primary/10",
                     isCorrect && "border-emerald-500/70 bg-emerald-500/10",
                     isWrong && "border-red-500/70 bg-red-500/10"
@@ -116,7 +117,7 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
                 >
                   <span
                     className={cn(
-                      "size-4 shrink-0 rounded-full border-2",
+                      "size-4 shrink-0 rounded-full border-2 transition-all duration-200",
                       multiple && "rounded-[4px]",
                       on && !checked && "border-primary bg-primary",
                       isCorrect && "border-emerald-500 bg-emerald-500",
@@ -124,8 +125,8 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
                     )}
                   />
                   <span className="flex-1">{option}</span>
-                  {isCorrect && <Check className="size-4 shrink-0 text-emerald-500" />}
-                  {isWrong && <X className="size-4 shrink-0 text-red-500" />}
+                  {isCorrect && <Check className="size-4 shrink-0 text-emerald-500 duration-300 animate-in fade-in-0 zoom-in-50" />}
+                  {isWrong && <X className="size-4 shrink-0 text-red-500 duration-300 animate-in fade-in-0 zoom-in-50" />}
                 </button>
               </div>
             )
@@ -133,34 +134,39 @@ export function QuestionCard({ question: q, label, continueLabel = "Continuar", 
         </div>
 
         {checked && (
-          <div className="rounded-xl bg-gradient-to-br from-primary/70 via-primary/20 to-sky-500/50 p-px">
+          <div className="rounded-xl bg-gradient-to-br from-primary/70 via-primary/20 to-sky-500/50 p-px duration-300 animate-in fade-in-0 motion-safe:slide-in-from-top-1">
             <div className="space-y-1.5 rounded-[11px] bg-card px-4 py-3">
               <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">Explicación</p>
               <p className="text-sm leading-relaxed">{q.explanation}</p>
+              {q.source && (
+                <p className="flex items-center gap-1.5 pt-1 text-xs text-muted-foreground">
+                  <FileText className="size-3.5 shrink-0" /> Fuente: {q.source}
+                </p>
+              )}
             </div>
           </div>
         )}
       </div>
 
-      {(checked || (multiple && chosen.length > 0)) && (
-        <div
-          className={cn(
-            "flex items-center justify-between gap-3 border-t px-5 py-3",
-            checked && (right ? "border-t-emerald-500/60" : "border-t-red-500/60")
-          )}
-        >
-          <p className="text-sm font-medium" aria-live="polite">
-            {!checked ? "" : right ? "🎉 Correcto" : multiple && found > 0 ? `🤔 ${found} de ${q.correct.length} correctas` : "🤔 Incorrecto"}
-          </p>
-          {checked ? (
-            <Button onClick={() => onDone(right, chosen)}>
-              {continueLabel} <CornerDownLeft />
-            </Button>
-          ) : (
-            <Button onClick={() => setChecked(true)}>Revisar</Button>
-          )}
-        </div>
-      )}
+      <div
+        className={cn(
+          "flex items-center justify-between gap-3 border-t px-5 py-3 transition-colors duration-300",
+          checked && (right ? "border-t-emerald-500/60" : "border-t-red-500/60")
+        )}
+      >
+        <p className="text-sm font-medium" aria-live="polite">
+          {!checked ? "" : right ? "🎉 Correcto" : multiple && found > 0 ? `🤔 ${found} de ${q.correct.length} correctas` : "🤔 Incorrecto"}
+        </p>
+        {checked ? (
+          <Button onClick={() => onDone(right, chosen)}>
+            {continueLabel} <CornerDownLeft />
+          </Button>
+        ) : (
+          <Button disabled={!chosen.length} onClick={() => setChecked(true)}>
+            Enviar <CornerDownLeft />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

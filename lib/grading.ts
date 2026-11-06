@@ -1,6 +1,6 @@
 // Pure quiz helpers shared by the API (cleaning AI output) and the quiz UI (scoring). No React, so Node can test it.
 
-type Raw = { topic: string; question: string; options: string[]; correct: number[]; explanation: string }
+export type Raw = { topic: string; question: string; options: string[]; correct: number[]; explanation: string }
 
 // Structured output guarantees the shape, not the values: keep only questions whose answer key makes sense.
 export function cleanQuestions<T extends Raw>(questions: T[]): T[] {
@@ -9,6 +9,13 @@ export function cleanQuestions<T extends Raw>(questions: T[]): T[] {
     const ok = q.question.trim() && q.options.length >= 2 && correct.length > 0 && correct.length < q.options.length
     return ok ? [{ ...q, correct }] : []
   })
+}
+
+// The AI can invent a citation, so one only stays if it names a file it was really given.
+export function keepSource(source: string, fileNames: string[]) {
+  const text = source.trim()
+  const named = fileNames.map((n) => n.replace(/\.[^.]+$/, "").trim().toLowerCase()).filter(Boolean)
+  return named.some((n) => text.toLowerCase().includes(n)) ? text : ""
 }
 
 // A multiple-answer question only counts as right when the chosen set matches exactly.

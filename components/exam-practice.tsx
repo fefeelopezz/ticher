@@ -181,7 +181,7 @@ export const explainHref = (q: Question, chosen: number[], subject = "Otro") =>
     `No entendí esta pregunta de "${q.topic}": "${q.question}". Respondí "${optionText(q, chosen)}" y la correcta era "${optionText(q, q.correct)}". ¿Me explicas por qué, paso a paso?`
   )}&subject=${encodeURIComponent(subject)}`
 
-// Astra's "Cuestionario": one question at a time, "Revisar" shows the explanation, results show accuracy and time.
+// Astra's "Cuestionario": one question at a time, "Enviar" shows the explanation, results show accuracy and time.
 export function Quiz({ title, back, questions, onFinish, subject, eyebrow = "Opción múltiple" }: QuizProps) {
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<number[][]>([])

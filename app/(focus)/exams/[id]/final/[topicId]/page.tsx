@@ -200,6 +200,7 @@ export default function FinalExamPage() {
                   </p>
                   <p className="text-muted-foreground">Correcta: {q.correct.map((c) => q.options[c]).join(" / ")}</p>
                   <p>{q.explanation}</p>
+                  {q.source && <p className="text-xs text-muted-foreground">Fuente: {q.source}</p>}
                 </div>
               )
             })}

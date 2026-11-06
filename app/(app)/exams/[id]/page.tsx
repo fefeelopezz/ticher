@@ -39,6 +39,7 @@ import { DatePicker } from "@/components/date-picker"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatTime } from "@/components/exam-practice"
 import { GoalBar } from "@/components/goal-bar"
+import { ExamGlossary } from "@/components/exam-glossary"
 import { ExamMaterials } from "@/components/subjects-section"
 import {
   DEFAULT_GOAL,
@@ -369,6 +370,7 @@ export default function PrepPage() {
           <TabsTrigger value="path">Ruta de estudio</TabsTrigger>
           <TabsTrigger value="progress">Progreso</TabsTrigger>
           <TabsTrigger value="files">Archivos</TabsTrigger>
+          <TabsTrigger value="glossary">Glosario</TabsTrigger>
         </TabsList>
 
         <TabsContent value="path" className="space-y-4 pt-2">
@@ -681,6 +683,10 @@ export default function PrepPage() {
 
         <TabsContent value="files" className="pt-2">
           <ExamMaterials subject={prep.subject} />
+        </TabsContent>
+
+        <TabsContent value="glossary" className="pt-2">
+          <ExamGlossary prep={prep} update={update} />
         </TabsContent>
       </Tabs>
 

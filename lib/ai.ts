@@ -24,7 +24,8 @@ const INLINE_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/gif",
 // Study files go first in the conversation; Gemini caches a repeated prefix automatically.
 export function fileParts(files: FilePayload[]): Part[] {
   return files.flatMap((f): Part[] => {
-    if (INLINE_TYPES.includes(f.type)) return [{ inlineData: { mimeType: f.type, data: f.data } }]
+    // Inline bytes carry no name, and the AI needs it to cite the file.
+    if (INLINE_TYPES.includes(f.type)) return [{ text: `Archivo "${f.name}":` }, { inlineData: { mimeType: f.type, data: f.data } }]
     if (f.type.startsWith("text/") || /\.(md|txt)$/i.test(f.name)) {
       return [{ text: `Archivo "${f.name}":\n${Buffer.from(f.data, "base64").toString("utf8")}` }]
     }

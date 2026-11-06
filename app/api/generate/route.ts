@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { FileSchema, aiErrorResponse, ask, fileParts, tooLarge } from "@/lib/ai"
 import { getSession, unauthorized } from "@/lib/auth"
-import { cleanQuestions } from "@/lib/grading"
+import { cleanQuestions, keepSource, type Raw } from "@/lib/grading"
 
 const Body = z.object({
   kind: z.enum(["topics", "flashcards", "quiz", "summary", "mock"]),
@@ -28,6 +28,7 @@ const Quiz = z.object({
       options: z.array(z.string()).describe("Exactamente 4 opciones"),
       correct: z.array(z.number().int()).describe("Índices (0-3) de TODAS las opciones correctas"),
       explanation: z.string().describe("Por qué esa es la respuesta, en 1-3 frases"),
+      source: z.string().describe('De dónde sale la respuesta: nombre del archivo adjunto sin extensión y, si hay una marca [Página N], la página. Ejemplo: "Apuntes de clase, pág. 12". Cadena vacía si no sale del material adjunto'),
     })
   ),
 })
@@ -37,6 +38,7 @@ const Check = z.object({
   options: z.array(z.string()).describe("Exactamente 4 opciones"),
   correct: z.array(z.number().int()).describe("Índices (0-3) de las opciones correctas; normalmente una"),
   explanation: z.string().describe("Por qué, citando lo explicado en la sección"),
+  source: z.string().describe('De dónde sale la respuesta: nombre del archivo adjunto sin extensión y, si hay una marca [Página N], la página. Ejemplo: "Apuntes de clase, pág. 12". Cadena vacía si no sale del material adjunto'),
 })
 
 const Summary = z.object({
@@ -68,6 +70,14 @@ const Summary = z.object({
     )
     .describe("3 a 5 secciones; varía los bloques entre secciones"),
   finalQuiz: z.array(Check).describe("3 preguntas finales que integran todo el tema"),
+  glossary: z
+    .array(
+      z.object({
+        term: z.string().describe("El concepto, escrito exactamente como aparece en el texto de la lección"),
+        definition: z.string().describe("Definición simple de una frase, de 20 palabras como máximo"),
+      })
+    )
+    .describe("Hasta 12 conceptos del texto de la lección: los que el material adjunto usa sin explicar y los más importantes para resaltar"),
 })
 
 const Mock = z.object({
@@ -102,6 +112,9 @@ export async function POST(request: Request) {
     .filter(Boolean)
     .join("\n")
   const contents = [{ role: "user", parts: [...fileParts(files), { text }] }]
+  const fileNames = files.map((f) => f.name)
+  const clean = <T extends Raw & { source: string }>(questions: T[]) =>
+    cleanQuestions(questions).map((q) => ({ ...q, source: keepSource(q.source, fileNames) }))
 
   try {
     switch (kind) {
@@ -115,15 +128,16 @@ export async function POST(request: Request) {
       }
       case "quiz": {
         const out = await ask(Quiz, system, contents)
-        return Response.json({ questions: cleanQuestions(out.questions).slice(0, count) })
+        return Response.json({ questions: clean(out.questions).slice(0, count) })
       }
       case "summary": {
         const out = await ask(Summary, system, contents)
         const topic = topics[0]
         // Checks reuse the quiz cleaner; a section whose check is unusable keeps its content without one.
-        const sections = out.sections.map((s) => ({ ...s, check: cleanQuestions([{ ...s.check, topic }])[0] }))
-        const finalQuiz = cleanQuestions(out.finalQuiz.map((q) => ({ ...q, topic })))
-        return Response.json({ summary: { title: out.title, intro: out.intro, sections, finalQuiz } })
+        const sections = out.sections.map((s) => ({ ...s, check: clean([{ ...s.check, topic }])[0] }))
+        const finalQuiz = clean(out.finalQuiz.map((q) => ({ ...q, topic })))
+        const glossary = out.glossary.filter((g) => g.term.trim() && g.definition.trim()).slice(0, 12)
+        return Response.json({ summary: { title: out.title, intro: out.intro, sections, finalQuiz, glossary } })
       }
       case "mock": {
         const out = await ask(Mock, system, contents)

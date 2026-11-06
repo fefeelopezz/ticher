@@ -8,9 +8,11 @@ import {
   NO_LESSONS,
   NO_PREPS,
   NO_SUBJECTS,
+  allCards,
   earn,
   nextReview,
   readiness,
+  same,
   today,
   useHydrated,
   useStored,
@@ -33,7 +35,7 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 export type Kind = "topics" | "flashcards" | "quiz" | "summary" | "mock" | "grade"
 type Options = { topics?: string[]; count?: number; difficulty?: Difficulty; tasks?: MockTask[]; answers?: string[] }
 
-export const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase()
+export { allCards, same }
 
 // Each scored topic earns points; without topics the prep's own score earns them instead.
 export function applyScores(p: ExamPrep, byTopic: Record<string, number>, overall: number): ExamPrep {
@@ -124,11 +126,4 @@ export function trackMistakes(old: Question[] = [], result: QuizResult) {
   const missed = result.missed ?? []
   const missedText = new Set(missed.map((q) => q.question))
   return [...missed, ...old.filter((q) => !missedText.has(q.question))].filter((q) => !right.has(q.question)).slice(0, MAX_MISTAKES)
-}
-
-// Every flashcard of an exam (its shared deck plus each topic's saved decks), without repeats.
-export function allCards(p: ExamPrep) {
-  const decks = [p.cards ?? [], ...(p.savedLessons ?? []).flatMap((l) => (l.kind === "cards" ? [l.cards] : []))]
-  const seen = new Set<string>()
-  return decks.flat().filter((c) => !seen.has(c.front) && seen.add(c.front))
 }
